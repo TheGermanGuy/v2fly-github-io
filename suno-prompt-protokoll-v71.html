@@ -1423,7 +1423,8 @@ function buildLyricsSystemPrompt(meta) {
 6. LEERE ZEILE zwischen jeder Song-Sektion — zwingend und ausnahmslos.
 7. Originaltext EXAKT Wort für Wort beibehalten — kein einziges Wort ändern, keine Umformulierungen, keine Ergänzungen, keine Auslassungen.`
     : `SUNO v5.5 ANNOTATION-REGELN:
-1. ERSTE ZEILE exakt: [Header: Mood: ${moodStr} | Energy: ${energyStr} | Vocals: ${meta.vocal||'Mixed'} | Model: v5.5]
+1. KEIN Header-Tag, kein Metadaten-Block in der ersten Zeile — Mood, Energy und Vocals gehören ausschließlich in das Style-Prompt-Feld, niemals in den Lyrics-Block.
+   Der Lyrics-Block beginnt direkt mit dem ersten strukturellen Section-Tag: [INTRO] oder [VERSE 1].
 2. Section-Tags Großbuchstaben: [VERSE 1], [VERSE 2], [PRE-CHORUS], [CHORUS], [BRIDGE], [OUTRO], [INTRO], [BREAKDOWN]
 3. STACKED TAGS — ABSOLUT ZWINGEND: Niemals mehrere Tags durch Pipes (|) auf einer Zeile trennen. Tags IMMER einzeln auf separaten, aufeinanderfolgenden Zeilen stapeln.
    RICHTIG (so muss es aussehen):
@@ -1602,12 +1603,12 @@ function renderLyrics(text) {
   document.getElementById('lyricsModelBadge').textContent = document.getElementById('sunoModel').value;
   const el = document.getElementById('lyricsOutput');
   let h = text
-    .replace(/(\[Header:[^\]]+\])/g,         '<span style="color:#f0abfc;font-weight:bold;font-size:11px;">$1</span>')
     .replace(/(\[↑[^\]]+\]|\[↓[^\]]+\])/g,  '<span style="color:#fb923c;font-style:italic;">$1</span>')
     .replace(/(\[CHORUS[^\]]*\]|\[Chorus[^\]]*\])/g, '<span style="color:#fbbf24;font-weight:bold;">$1</span>')
     .replace(/(\[VERSE[^\]]*\]|\[Verse[^\]]*\])/g,   '<span style="color:#86efac;font-weight:bold;">$1</span>')
     .replace(/(\[BRIDGE[^\]]*\]|\[Bridge[^\]]*\])/g, '<span style="color:#93c5fd;font-weight:bold;">$1</span>')
     .replace(/(\[OUTRO[^\]]*\]|\[Outro[^\]]*\])/g,   '<span style="color:#c4b5fd;font-weight:bold;">$1</span>')
+    .replace(/(\[INTRO[^\]]*\]|\[Intro[^\]]*\])/g,   '<span style="color:#f0abfc;font-weight:bold;">$1</span>')
     .replace(/(\[[^\]]+\])/g,                '<span style="color:#fbbf24;font-weight:bold;">$1</span>')
     .replace(/(\([^)]+\))/g,                 '<span style="color:#9ca3af;font-style:italic;">$1</span>');
   el.innerHTML = h;
