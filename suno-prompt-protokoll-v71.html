@@ -1,0 +1,1785 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Suno AI Prompt Protokoll v7.1</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:ital,wght@0,300;0,400;0,700;1,400&family=Inter:wght@300;400;500;600&display=swap');
+
+    :root {
+      --bg:   #070710; --bg2: #0c0c1b; --bg3: #111127; --panel: #0a0a1c;
+      --border: #1a1a38; --border2: #252548;
+      --accent: #6d28d9; --accent2: #8b5cf6; --accent3: #a78bfa;
+      --neon: #f0abfc; --gold: #fbbf24; --cyan: #22d3ee;
+      --green: #34d399; --red: #f87171; --orange: #fb923c;
+      --text: #e2e8f0; --muted: #6b7280; --dimmed: #374151;
+      --chip-bg: rgba(109,40,217,0.08); --chip-border: rgba(109,40,217,0.2);
+      --chip-active-bg: rgba(139,92,246,0.22); --chip-active-border: #7c3aed;
+      --provider-gemini: #4285f4; --provider-openai: #10a37f;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body { background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; min-height: 100vh; }
+
+    body::before {
+      content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+      background:
+        radial-gradient(ellipse 70% 45% at 10% 0%,   rgba(109,40,217,0.18) 0%, transparent 60%),
+        radial-gradient(ellipse 50% 35% at 90% 100%, rgba(240,171,252,0.07) 0%, transparent 50%),
+        radial-gradient(ellipse 35% 25% at 55% 45%,  rgba(34,211,238,0.04) 0%, transparent 70%);
+    }
+
+    /* ── LOADING OVERLAY ── */
+    .loading-overlay {
+      position: fixed; inset: 0; z-index: 9999;
+      background: rgba(7,7,16,0.94); backdrop-filter: blur(12px);
+      display: none; flex-direction: column;
+      align-items: center; justify-content: center; gap: 20px;
+    }
+    .loading-overlay.show { display: flex; }
+
+    .spinner-ring {
+      width: 60px; height: 60px; position: relative;
+    }
+    .spinner-ring::before, .spinner-ring::after {
+      content: ''; position: absolute; inset: 0; border-radius: 50%;
+      border: 2px solid transparent;
+    }
+    .spinner-ring::before {
+      border-top-color: var(--accent2);
+      border-right-color: var(--neon);
+      animation: spin 1s linear infinite;
+    }
+    .spinner-ring::after {
+      inset: 6px;
+      border-bottom-color: var(--cyan);
+      animation: spin 1.4s linear infinite reverse;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .loading-text { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 16px; color: var(--accent3); letter-spacing: 0.1em; text-transform: uppercase; }
+    .loading-sub { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted); text-align: center; max-width: 320px; line-height: 1.7; }
+    .loading-phase { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--cyan); }
+    .loading-dots { display: flex; gap: 6px; margin-top: 4px; }
+    .loading-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--dimmed); animation: ldot 1.2s ease-in-out infinite; }
+    .loading-dot:nth-child(2) { animation-delay: 0.2s; }
+    .loading-dot:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes ldot { 0%,100%{opacity:.3;transform:scale(.8)} 50%{opacity:1;transform:scale(1.3);background:var(--accent2)} }
+
+    /* ── LAYOUT ── */
+    .container { position: relative; z-index: 1; max-width: 1020px; margin: 0 auto; padding: 28px 18px 80px; }
+
+    /* ── HEADER ── */
+    .header { text-align: center; margin-bottom: 40px; padding: 36px 0 28px; border-bottom: 1px solid var(--border); }
+    .header-badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: rgba(109,40,217,0.12); border: 1px solid rgba(109,40,217,0.35);
+      border-radius: 100px; padding: 5px 16px;
+      font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--accent3);
+      letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 18px;
+    }
+    h1 {
+      font-family: 'Syne', sans-serif; font-size: clamp(24px, 4.5vw, 42px); font-weight: 800;
+      background: linear-gradient(130deg, #fff 0%, var(--accent3) 40%, var(--neon) 75%, var(--cyan) 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      letter-spacing: -0.025em; line-height: 1.1;
+    }
+    .header-sub { color: var(--muted); font-size: 12px; margin-top: 10px; font-family: 'JetBrains Mono', monospace; line-height: 1.8; }
+    .change-log { display: inline-flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; justify-content: center; }
+    .change-tag { font-family: 'JetBrains Mono', monospace; font-size: 10px; background: rgba(52,211,153,0.07); border: 1px solid rgba(52,211,153,0.2); border-radius: 100px; padding: 3px 10px; color: #6ee7b7; }
+
+    /* ── API PROVIDER SWITCHER ── */
+    .provider-bar {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+      padding: 20px 22px; margin-bottom: 18px;
+    }
+    .provider-bar-title {
+      font-family: 'Syne', sans-serif; font-size: 11px; font-weight: 700;
+      color: var(--accent3); text-transform: uppercase; letter-spacing: 0.12em;
+      margin-bottom: 16px; display: flex; align-items: center; gap: 8px;
+    }
+    .provider-tabs { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+    .provider-tab {
+      display: flex; align-items: center; gap: 8px;
+      padding: 9px 18px; border-radius: 10px; border: 1px solid var(--border);
+      background: var(--bg2); cursor: pointer; transition: all 0.2s;
+      font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted);
+    }
+    .provider-tab:hover { border-color: var(--accent2); color: var(--accent3); }
+    .provider-tab.active[data-prov="gemini"] { border-color: var(--provider-gemini); color: #93c5fd; background: rgba(66,133,244,0.08); }
+    .provider-tab.active[data-prov="openai"]  { border-color: var(--provider-openai); color: #6ee7b7; background: rgba(16,163,127,0.08); }
+    .provider-tab.active[data-prov="claude"]  { border-color: var(--neon); color: var(--neon); background: rgba(240,171,252,0.08); }
+    .provider-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; opacity: 0.7; }
+
+    .api-key-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: end; }
+    .api-key-row input { font-family: 'JetBrains Mono', monospace; letter-spacing: 0.05em; }
+    .btn-key-test {
+      background: rgba(34,211,238,0.08); border: 1px solid rgba(34,211,238,0.25);
+      border-radius: 8px; padding: 9px 14px; color: var(--cyan); cursor: pointer;
+      font-family: 'JetBrains Mono', monospace; font-size: 10px; white-space: nowrap; transition: all 0.15s;
+    }
+    .btn-key-test:hover { background: rgba(34,211,238,0.15); }
+    .key-status { font-family: 'JetBrains Mono', monospace; font-size: 10px; margin-top: 6px; }
+    .key-status.ok { color: var(--green); }
+    .key-status.err { color: var(--red); }
+
+    .provider-model-row { display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+    .model-chip {
+      padding: 5px 12px; border-radius: 8px; border: 1px solid var(--border);
+      font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--muted);
+      cursor: pointer; background: var(--bg2); transition: all 0.15s;
+    }
+    .model-chip.active { border-color: var(--accent2); color: var(--accent3); background: rgba(139,92,246,0.12); }
+
+    /* ── STEP BAR ── */
+    .step-bar {
+      display: flex; background: var(--panel); border: 1px solid var(--border);
+      border-radius: 12px; overflow: hidden; margin-bottom: 28px;
+    }
+    .step-item {
+      flex: 1; padding: 12px 4px; font-family: 'JetBrains Mono', monospace; font-size: 9px;
+      color: var(--muted); text-align: center; border-right: 1px solid var(--border);
+      transition: all 0.3s; cursor: default; user-select: none;
+    }
+    .step-item:last-child { border-right: none; }
+    .step-item.active { background: rgba(109,40,217,0.14); color: var(--accent3); }
+    .step-item.done { color: var(--green); background: rgba(52,211,153,0.05); }
+    .step-num { font-weight: 700; font-size: 12px; margin-bottom: 2px; }
+    .step-label { font-size: 8px; text-transform: uppercase; letter-spacing: 0.07em; }
+
+    /* ── CARD ── */
+    .card {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 16px; padding: 22px 24px; margin-bottom: 16px;
+      transition: border-color 0.2s;
+    }
+    .card:hover { border-color: var(--border2); }
+    .card-title {
+      font-family: 'Syne', sans-serif; font-size: 11px; font-weight: 700;
+      color: var(--accent3); text-transform: uppercase; letter-spacing: 0.12em;
+      margin-bottom: 18px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    }
+
+    /* ── FORM ELEMENTS ── */
+    .field-group { display: flex; flex-direction: column; }
+    label {
+      display: block; font-size: 10px; font-family: 'JetBrains Mono', monospace;
+      color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 5px;
+    }
+    label .hint { font-size: 9px; color: var(--dimmed); text-transform: none; letter-spacing: 0; margin-left: 6px; }
+    textarea, input[type="text"], input[type="password"], select {
+      width: 100%; background: var(--bg2); border: 1px solid var(--border);
+      border-radius: 10px; color: var(--text); font-family: 'JetBrains Mono', monospace;
+      font-size: 12px; padding: 9px 12px; transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    textarea:focus, input[type="text"]:focus, input[type="password"]:focus, select:focus {
+      outline: none; border-color: rgba(139,92,246,0.5);
+      box-shadow: 0 0 0 3px rgba(109,40,217,0.08);
+    }
+    textarea { min-height: 200px; resize: vertical; line-height: 1.7; }
+    select { cursor: pointer; }
+    select option { background: var(--bg2); color: var(--text); }
+    optgroup { color: var(--muted); font-style: normal; font-size: 11px; }
+    .hint-text { font-size: 10px; color: var(--dimmed); font-family: 'JetBrains Mono', monospace; margin-top: 4px; line-height: 1.5; }
+
+    /* ── GRIDS ── */
+    .meta-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(205px, 1fr)); gap: 14px; }
+    .bpm-key-row { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 14px; margin-top: 14px; }
+    @media (max-width: 720px) { .bpm-key-row { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 480px) { .meta-grid, .bpm-key-row { grid-template-columns: 1fr; } }
+
+    /* ── BPM SLIDER ── */
+    .bpm-display {
+      display: inline-block; min-width: 42px; text-align: center;
+      background: rgba(109,40,217,0.18); border: 1px solid rgba(139,92,246,0.38);
+      border-radius: 6px; padding: 2px 9px; color: var(--accent3);
+      font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 800; margin-left: 8px;
+    }
+    .bpm-slider {
+      -webkit-appearance: none; appearance: none;
+      width: 100%; height: 4px; border-radius: 2px; border: none; padding: 0;
+      cursor: pointer; margin-top: 8px;
+      background: linear-gradient(to right, var(--accent) 0%, var(--accent2) var(--bpm-pct, 27%), var(--bg3) var(--bpm-pct, 27%));
+    }
+    .bpm-slider::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 17px; height: 17px;
+      background: var(--accent2); border-radius: 50%; cursor: pointer;
+      border: 2px solid var(--bg); box-shadow: 0 0 10px rgba(139,92,246,0.4);
+    }
+    .bpm-presets { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
+    .preset-btn {
+      background: var(--bg3); border: 1px solid var(--border); border-radius: 6px;
+      color: var(--muted); font-family: 'JetBrains Mono', monospace; font-size: 9px;
+      padding: 4px 8px; cursor: pointer; transition: all 0.15s; white-space: nowrap;
+    }
+    .preset-btn:hover { border-color: var(--accent2); color: var(--accent3); background: rgba(109,40,217,0.1); }
+
+    /* ── CHIPS ── */
+    .chip-group-label {
+      font-family: 'JetBrains Mono', monospace; font-size: 9px; color: var(--dimmed);
+      text-transform: uppercase; letter-spacing: 0.1em; margin: 12px 0 6px; display: block;
+    }
+    .chip-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip {
+      display: inline-flex; align-items: center;
+      background: var(--chip-bg); border: 1px solid var(--chip-border);
+      border-radius: 100px; padding: 5px 11px;
+      font-family: 'JetBrains Mono', monospace; font-size: 10px;
+      color: var(--muted); cursor: pointer; transition: all 0.15s; user-select: none;
+    }
+    .chip:hover { border-color: var(--accent2); color: var(--accent3); transform: translateY(-1px); }
+    .chip.active {
+      background: var(--chip-active-bg); border-color: var(--chip-active-border);
+      color: var(--accent3); font-weight: 700;
+      box-shadow: 0 0 10px rgba(109,40,217,0.2);
+    }
+    .chip.active::before { content: '✓ '; }
+
+    /* ── DIVIDER ── */
+    .divider { border: none; border-top: 1px solid var(--border); margin: 18px 0; position: relative; }
+    .divider[data-label]::after {
+      content: attr(data-label); position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%, -50%); background: var(--panel);
+      color: var(--dimmed); font-family: 'JetBrains Mono', monospace; font-size: 9px;
+      padding: 0 14px; white-space: nowrap; letter-spacing: 0.08em; text-transform: uppercase;
+    }
+
+    /* ── CHAR COUNTER ── */
+    .char-counter { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--dimmed); margin-top: 5px; text-align: right; }
+    .char-indicator { font-family: 'JetBrains Mono', monospace; font-size: 11px; margin-bottom: 10px; padding: 6px 12px; border-radius: 6px; }
+    .char-indicator.ok   { background: rgba(52,211,153,0.07);  color: var(--green); border: 1px solid rgba(52,211,153,0.2); }
+    .char-indicator.warn { background: rgba(251,191,36,0.07);  color: var(--gold);  border: 1px solid rgba(251,191,36,0.2); }
+    .char-indicator.over { background: rgba(248,113,113,0.07); color: var(--red);   border: 1px solid rgba(248,113,113,0.2); }
+
+    /* ── BUTTONS ── */
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent), var(--accent2) 60%, #7c3aed); border: none;
+      border-radius: 12px; padding: 16px 28px; color: #fff;
+      font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 700;
+      width: 100%; margin-top: 20px; cursor: pointer; letter-spacing: 0.05em;
+      transition: opacity 0.2s, transform 0.1s, box-shadow 0.2s;
+      box-shadow: 0 4px 28px rgba(109,40,217,0.35);
+    }
+    .btn-primary:hover { opacity: 0.9; transform: translateY(-2px); box-shadow: 0 8px 36px rgba(109,40,217,0.45); }
+    .btn-primary:active { transform: translateY(0); }
+    .btn-secondary {
+      background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+      border-radius: 8px; padding: 7px 12px; color: var(--muted);
+      cursor: pointer; font-family: 'JetBrains Mono', monospace; font-size: 10px;
+      margin: 4px 4px 0 0; transition: all 0.15s;
+    }
+    .btn-secondary:hover { border-color: var(--accent2); color: var(--accent3); background: rgba(109,40,217,0.08); }
+    .btn-copy {
+      background: rgba(52,211,153,0.07); border: 1px solid rgba(52,211,153,0.28);
+      border-radius: 8px; padding: 9px 18px; color: var(--green); cursor: pointer;
+      font-family: 'JetBrains Mono', monospace; font-size: 11px; margin-top: 12px;
+      transition: all 0.15s;
+    }
+    .btn-copy:hover { background: rgba(52,211,153,0.14); }
+    .btn-copy.copied { background: rgba(251,191,36,0.07); color: var(--gold); border-color: rgba(251,191,36,0.3); }
+
+    /* ── OUTPUT BLOCKS ── */
+    .output-block {
+      background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+      padding: 16px; font-family: 'JetBrains Mono', monospace; font-size: 12px;
+      line-height: 1.9; white-space: pre-wrap; color: #c4b5fd;
+      max-height: 600px; overflow-y: auto;
+    }
+    .output-block::-webkit-scrollbar { width: 5px; }
+    .output-block::-webkit-scrollbar-track { background: var(--bg2); border-radius: 3px; }
+    .output-block::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+    /* ── ALERTS ── */
+    .alert { border-radius: 10px; padding: 11px 14px; font-family: 'JetBrains Mono', monospace; font-size: 11px; margin-bottom: 8px; line-height: 1.65; }
+    .alert-success { background: rgba(52,211,153,0.06);  border: 1px solid rgba(52,211,153,0.2); color: #86efac; }
+    .alert-warning { background: rgba(251,146,60,0.06);  border: 1px solid rgba(251,146,60,0.2); color: #fdba74; }
+    .alert-info    { background: rgba(109,40,217,0.07);  border: 1px solid rgba(109,40,217,0.22); color: var(--accent3); }
+    .alert-error   { background: rgba(248,113,113,0.06); border: 1px solid rgba(248,113,113,0.22); color: #fca5a5; }
+
+    /* ── ANALYSIS GRID ── */
+    .analysis-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(185px, 1fr)); gap: 11px; }
+    .a-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 13px; }
+    .a-card-title { font-family: 'JetBrains Mono', monospace; font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 7px; }
+    .a-card-value { font-size: 12px; color: var(--text); line-height: 1.55; }
+    .a-suggestions { grid-column: 1 / -1; }
+    .suggestion-item {
+      background: rgba(251,191,36,0.05); border-left: 3px solid var(--gold);
+      border-radius: 0 8px 8px 0; padding: 8px 11px; margin-top: 7px;
+      font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #fcd34d; line-height: 1.6;
+    }
+    .quality-bar { height: 4px; background: var(--bg3); border-radius: 2px; overflow: hidden; margin-top: 8px; }
+    .quality-fill { height: 100%; border-radius: 2px; transition: width 1.2s cubic-bezier(0.4,0,0.2,1); }
+
+    /* ── BADGES ── */
+    .model-badge { background: rgba(52,211,153,0.08); border: 1px solid rgba(52,211,153,0.25); border-radius: 6px; padding: 2px 8px; color: var(--green); font-size: 9px; font-family: 'JetBrains Mono', monospace; }
+    .tag          { background: rgba(109,40,217,0.1);  border: 1px solid rgba(109,40,217,0.28); border-radius: 6px; padding: 2px 8px; color: var(--accent3); font-size: 9px; font-family: 'JetBrains Mono', monospace; }
+    .new-badge    { background: rgba(240,171,252,0.1); border: 1px solid rgba(240,171,252,0.28); border-radius: 6px; padding: 2px 8px; color: var(--neon); font-size: 9px; font-family: 'JetBrains Mono', monospace; }
+    .v7-badge     { background: rgba(34,211,238,0.08); border: 1px solid rgba(34,211,238,0.28); border-radius: 6px; padding: 2px 8px; color: var(--cyan); font-size: 9px; font-family: 'JetBrains Mono', monospace; }
+
+    /* ── HISTORY ── */
+    .history-item { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin-bottom: 8px; cursor: pointer; transition: border-color 0.15s; }
+    .history-item:hover { border-color: var(--accent2); }
+    .history-meta { font-family: 'JetBrains Mono', monospace; font-size: 9px; color: var(--muted); margin-bottom: 4px; }
+    .history-preview { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--dimmed); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* ── RESULT ACTIONS ── */
+    .result-actions { text-align: center; margin-top: 22px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+    .result-actions button { background: none; padding: 9px 18px; border-radius: 8px; cursor: pointer; font-family: 'JetBrains Mono', monospace; font-size: 10px; transition: all 0.15s; }
+    .btn-reset { border: 1px solid var(--red);    color: #f87171; }
+    .btn-reset:hover  { background: rgba(248,113,113,0.1); }
+    .btn-hist  { border: 1px solid var(--border); color: var(--muted); }
+    .btn-hist:hover   { border-color: var(--accent2); color: var(--accent3); }
+    .btn-export { border: 1px solid var(--cyan); color: var(--cyan); }
+    .btn-export:hover { background: rgba(34,211,238,0.08); }
+
+    /* ── COLLAPSIBLE ── */
+    .collapsible-header { cursor: pointer; display: flex; align-items: center; justify-content: space-between; padding: 0; margin-bottom: 0; transition: color 0.15s; }
+    .collapsible-header:hover { color: var(--accent3); }
+    .collapsible-arrow { transition: transform 0.25s; font-size: 11px; color: var(--muted); }
+    .collapsible-arrow.open { transform: rotate(180deg); }
+    .collapsible-body { overflow: hidden; transition: max-height 0.35s ease, opacity 0.3s; max-height: 0; opacity: 0; }
+    .collapsible-body.open { max-height: 3000px; opacity: 1; margin-top: 18px; }
+
+    /* ── TEMPERATURE KNOB ── */
+    .temp-row { display: flex; align-items: center; gap: 12px; margin-top: 6px; }
+    .temp-val { font-family: 'Syne', sans-serif; font-weight: 800; color: var(--accent3); font-size: 13px; min-width: 30px; }
+
+    /* ── FADE IN ── */
+    @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+    .card { animation: fadeIn 0.3s ease backwards; }
+    .result-section-inner > .card:nth-child(1) { animation-delay: 0.05s; }
+    .result-section-inner > .card:nth-child(2) { animation-delay: 0.1s; }
+    .result-section-inner > .card:nth-child(3) { animation-delay: 0.15s; }
+    .result-section-inner > .card:nth-child(4) { animation-delay: 0.2s; }
+  </style>
+</head>
+<body>
+
+<!-- ── LOADING OVERLAY ── -->
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="spinner-ring"></div>
+  <div class="loading-text">PROTOKOLL v7.1</div>
+  <div class="loading-phase" id="loadingStatus">Initialisiere...</div>
+  <div class="loading-dots">
+    <div class="loading-dot"></div>
+    <div class="loading-dot"></div>
+    <div class="loading-dot"></div>
+  </div>
+  <div class="loading-sub">Suno AI Prompt Engine · Multi-Provider AI</div>
+</div>
+
+<div class="container">
+
+  <!-- ── HEADER ── -->
+  <div class="header">
+    <div class="header-badge">⚡ Suno AI Prompt Engine · v7.1 — Multi-Provider Update</div>
+    <h1>PROMPT PROTOKOLL v7.1</h1>
+    <div class="header-sub">Gemini · OpenAI · Claude · Dynamische 4-Phasen-KI · 55+ Genres · Erweiterte Annotations</div>
+    <div class="change-log">
+      <span class="change-tag">✓ OpenAI GPT-4o Support</span>
+      <span class="change-tag">✓ Claude API Support</span>
+      <span class="change-tag">✓ 55+ Genres</span>
+      <span class="change-tag">✓ 70+ Mood-Tags</span>
+      <span class="change-tag">✓ 50+ Instrumente</span>
+      <span class="change-tag">✓ Suno v4.5-all Free optimiert</span>
+      <span class="change-tag">✓ Suno v4.5 / v5.5 Modi</span>
+      <span class="change-tag">✓ Export JSON</span>
+      <span class="change-tag">✓ Temperatur-Control</span>
+    </div>
+  </div>
+
+  <!-- ── STEP BAR ── -->
+  <div class="step-bar">
+    <div class="step-item active" id="stepBar1"><div class="step-num">1</div><span class="step-label">Setup</span></div>
+    <div class="step-item" id="stepBar2"><div class="step-num">2</div><span class="step-label">Input</span></div>
+    <div class="step-item" id="stepBar3"><div class="step-num">3</div><span class="step-label">Analyse</span></div>
+    <div class="step-item" id="stepBar4"><div class="step-num">4</div><span class="step-label">Style Prompt</span></div>
+    <div class="step-item" id="stepBar5"><div class="step-num">5</div><span class="step-label">Lyrics</span></div>
+  </div>
+
+  <!-- ════════════════════════════════════════
+       SECTION: INPUT
+  ═══════════════════════════════════════════ -->
+  <div id="section-input">
+
+    <!-- CARD API PROVIDER -->
+    <div class="card provider-bar" style="padding:22px 24px;">
+      <div class="card-title" style="margin-bottom:12px;">
+        🔑 API Provider & Modell
+        <span class="v7-badge">NEU v7.1</span>
+      </div>
+      <div class="provider-tabs">
+        <div class="provider-tab active" data-prov="gemini" onclick="setProvider('gemini')">
+          <div class="provider-dot"></div>Gemini (Google)
+        </div>
+        <div class="provider-tab" data-prov="openai" onclick="setProvider('openai')">
+          <div class="provider-dot"></div>OpenAI (GPT)
+        </div>
+        <div class="provider-tab" data-prov="claude" onclick="setProvider('claude')">
+          <div class="provider-dot"></div>Claude (Anthropic)
+        </div>
+      </div>
+
+      <!-- Gemini Config -->
+      <div id="cfg-gemini" class="provider-cfg">
+        <div class="api-key-row">
+          <div class="field-group">
+            <label>Gemini API Key</label>
+            <input type="password" id="key-gemini" placeholder="AIzaSy…" autocomplete="off">
+          </div>
+          <button class="btn-key-test" onclick="testKey('gemini')">▶ Test</button>
+        </div>
+        <div class="key-status" id="status-gemini"></div>
+        <div class="provider-model-row">
+          <div class="model-chip active" data-model="gemini-2.5-flash" onclick="setModel('gemini','gemini-2.5-flash',this)">gemini-2.5-flash</div>
+          <div class="model-chip" data-model="gemini-2.5-pro" onclick="setModel('gemini','gemini-2.5-pro',this)">gemini-2.5-pro</div>
+          <div class="model-chip" data-model="gemini-2.0-flash" onclick="setModel('gemini','gemini-2.0-flash',this)">gemini-2.0-flash</div>
+        </div>
+      </div>
+
+      <!-- OpenAI Config -->
+      <div id="cfg-openai" class="provider-cfg" style="display:none;">
+        <div class="api-key-row">
+          <div class="field-group">
+            <label>OpenAI API Key</label>
+            <input type="password" id="key-openai" placeholder="sk-…" autocomplete="off">
+          </div>
+          <button class="btn-key-test" onclick="testKey('openai')">▶ Test</button>
+        </div>
+        <div class="key-status" id="status-openai"></div>
+        <div class="provider-model-row">
+          <div class="model-chip active" data-model="gpt-4o" onclick="setModel('openai','gpt-4o',this)">gpt-4o</div>
+          <div class="model-chip" data-model="gpt-4o-mini" onclick="setModel('openai','gpt-4o-mini',this)">gpt-4o-mini</div>
+          <div class="model-chip" data-model="gpt-4-turbo" onclick="setModel('openai','gpt-4-turbo',this)">gpt-4-turbo</div>
+          <div class="model-chip" data-model="o3-mini" onclick="setModel('openai','o3-mini',this)">o3-mini</div>
+        </div>
+      </div>
+
+      <!-- Claude Config -->
+      <div id="cfg-claude" class="provider-cfg" style="display:none;">
+        <div class="api-key-row">
+          <div class="field-group">
+            <label>Anthropic API Key</label>
+            <input type="password" id="key-claude" placeholder="sk-ant-…" autocomplete="off">
+          </div>
+          <button class="btn-key-test" onclick="testKey('claude')">▶ Test</button>
+        </div>
+        <div class="key-status" id="status-claude"></div>
+        <div class="provider-model-row">
+          <div class="model-chip active" data-model="claude-sonnet-4-5" onclick="setModel('claude','claude-sonnet-4-5',this)">claude-sonnet-4-5</div>
+          <div class="model-chip" data-model="claude-opus-4-5" onclick="setModel('claude','claude-opus-4-5',this)">claude-opus-4-5</div>
+          <div class="model-chip" data-model="claude-haiku-4-5-20251001" onclick="setModel('claude','claude-haiku-4-5-20251001',this)">claude-haiku-4-5</div>
+        </div>
+      </div>
+
+      <hr class="divider" data-label="Generierungs-Parameter" style="margin-top:16px;">
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:14px;">
+        <div class="field-group">
+          <label>Suno Zielmodell</label>
+          <select id="sunoModel">
+            <option value="v5.5">Suno v5.5 (Empfohlen)</option>
+            <option value="v4.5">Suno v4.5 / v4.5-ALL</option>
+            <option value="v4">Suno v4 (Legacy)</option>
+          </select>
+        </div>
+        <div class="field-group">
+          <label>KI-Temperatur <span class="hint">Kreativität</span></label>
+          <div class="temp-row">
+            <input type="range" id="aiTemp" min="0" max="10" value="6" oninput="document.getElementById('tempVal').textContent=(this.value/10).toFixed(1)" class="bpm-slider" style="flex:1;">
+            <span class="temp-val" id="tempVal">0.6</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CARD 1: SONGTEXT -->
+    <div class="card">
+      <div class="card-title">Schritt 1 — Songtext-Eingabe</div>
+      <div class="field-group">
+        <label>Rohtext (vollständiger Songtext)</label>
+        <textarea id="rawText" placeholder="Gib hier deinen vollständigen Songtext ein…&#10;&#10;[VERSE 1]&#10;Zeile 1&#10;Zeile 2&#10;&#10;[CHORUS]&#10;Refrain-Zeile 1&#10;Refrain-Zeile 2&#10;&#10;[BRIDGE]&#10;..." oninput="updateCharCounter()"></textarea>
+        <div class="char-counter" id="rawTextCounter">0 Zeilen · 0 Wörter · 0 Zeichen</div>
+        <div style="margin-top:10px; display:flex; flex-wrap:wrap; gap:0;">
+          <button class="btn-secondary" onclick="cleanMetaTags()">🧹 Tags entfernen</button>
+          <button class="btn-secondary" onclick="detectStructureLocal()">🔍 Struktur erkennen</button>
+          <button class="btn-secondary" onclick="clearText()">✕ Löschen</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- CARD 2: SONG BLUEPRINT -->
+    <div class="card">
+      <div class="card-title collapsible-header" onclick="toggleCollapse('blueprintBody','blueprintArrow')">
+        <span>Song Blueprint — Metadaten & Klang-Parameter</span>
+        <span class="collapsible-arrow open" id="blueprintArrow">▼</span>
+      </div>
+      <div class="collapsible-body open" id="blueprintBody">
+
+        <div class="meta-grid">
+          <!-- GENRE -->
+          <div class="field-group">
+            <label>Genre <span class="hint">Auto-füllt BPM, Key & Instrumente</span></label>
+            <select id="metaGenre" onchange="applyGenreDefaults()">
+              <option value="">– auswählen –</option>
+              <optgroup label="🎤 Rap / Hip-Hop">
+                <option>Cloud Rap</option>
+                <option>Dark Trap</option>
+                <option>Cinematic Trap</option>
+                <option>Melodic Rap</option>
+                <option>Boom Bap</option>
+                <option>Conscious Hip-Hop</option>
+                <option>Lo-Fi Hip-Hop</option>
+                <option>Drill</option>
+                <option>UK Drill</option>
+                <option>Phonk</option>
+                <option>Memphis Phonk</option>
+                <option>Gangsta Rap</option>
+                <option>Mumble Rap</option>
+              </optgroup>
+              <optgroup label="🎶 R&B / Soul">
+                <option>R&B</option>
+                <option>Neo-Soul</option>
+                <option>Alternative R&B</option>
+                <option>Emotional R&B</option>
+                <option>Contemporary R&B</option>
+                <option>Gospel R&B</option>
+                <option>Quiet Storm</option>
+              </optgroup>
+              <optgroup label="🎵 Pop">
+                <option>Pop</option>
+                <option>Indie Pop</option>
+                <option>Electro Pop</option>
+                <option>Synth Pop</option>
+                <option>Dream Pop</option>
+                <option>Art Pop</option>
+                <option>Dark Pop</option>
+                <option>Hyperpop</option>
+                <option>K-Pop</option>
+              </optgroup>
+              <optgroup label="🔊 Electronic / Dance">
+                <option>House</option>
+                <option>Deep House</option>
+                <option>Tech House</option>
+                <option>Progressive House</option>
+                <option>Techno</option>
+                <option>Minimal Techno</option>
+                <option>Industrial Techno</option>
+                <option>Drum & Bass</option>
+                <option>Liquid DnB</option>
+                <option>Dubstep</option>
+                <option>Future Bass</option>
+                <option>Trance</option>
+                <option>Psytrance</option>
+                <option>Ambient</option>
+                <option>Dark Ambient</option>
+                <option>Lo-Fi</option>
+                <option>Synthwave</option>
+                <option>Retrowave</option>
+                <option>Darkwave</option>
+                <option>Vaporwave</option>
+                <option>Jersey Club</option>
+                <option>Afro House</option>
+              </optgroup>
+              <optgroup label="🎸 Rock / Metal / Alternative">
+                <option>Indie Rock</option>
+                <option>Alternative Rock</option>
+                <option>Post-Rock</option>
+                <option>Shoegaze</option>
+                <option>Grunge</option>
+                <option>Post-Punk</option>
+                <option>Gothic Rock</option>
+                <option>Heavy Metal</option>
+                <option>Nu Metal</option>
+                <option>Metalcore</option>
+                <option>Math Rock</option>
+              </optgroup>
+              <optgroup label="🌍 Latin / World / Afrobeats">
+                <option>Afrobeats</option>
+                <option>Afropop</option>
+                <option>Amapiano</option>
+                <option>Reggaeton</option>
+                <option>Latin Trap</option>
+                <option>Dancehall</option>
+                <option>Cumbia</option>
+                <option>Bossa Nova</option>
+              </optgroup>
+              <optgroup label="🎹 Jazz / Classical / Score">
+                <option>Jazz</option>
+                <option>Nu Jazz</option>
+                <option>Neo-Classical</option>
+                <option>Cinematic Score</option>
+                <option>Orchestral</option>
+                <option>Gospel</option>
+                <option>Blues</option>
+                <option>Funk</option>
+              </optgroup>
+            </select>
+          </div>
+
+          <!-- ERA -->
+          <div class="field-group">
+            <label>Ära / Sound-Referenz</label>
+            <select id="metaEra">
+              <option value="">– beliebig –</option>
+              <option value="70s soul and funk aesthetic, warm analog sound">70er (Soul/Funk-Ära)</option>
+              <option value="80s synthwave, vintage production, warm synth pads">80er (Synthie-Ära)</option>
+              <option value="90s golden era hip-hop, sample-based boom bap sound">90er (Golden Era)</option>
+              <option value="early 2000s polished pop production, clean digital sound">2000er (Millennial)</option>
+              <option value="2010s trap era production, heavy 808s">2010er (Trap-Ära)</option>
+              <option value="mid-2010s cloud rap, ethereal lo-fi aesthetic">2015–2018 (Cloud Era)</option>
+              <option value="contemporary 2020s production, modern genre-blending">2020er / Aktuell</option>
+              <option value="timeless classic sound, no specific era">Zeitlos / Klassisch</option>
+              <option value="futuristic hyper-modern sound, AI-era aesthetic">Futuristisch / AI-Ära</option>
+            </select>
+          </div>
+
+          <!-- LANGUAGE -->
+          <div class="field-group">
+            <label>Gesangssprache</label>
+            <select id="metaLang">
+              <option value="">– auswählen –</option>
+              <optgroup label="Einzelsprache">
+                <option value="German lyrics, sing in German, German phonetics">Deutsch</option>
+                <option value="English lyrics, sing in English">Englisch</option>
+                <option value="Spanish lyrics, sing in Spanish">Spanisch</option>
+                <option value="French lyrics, sing in French">Französisch</option>
+                <option value="Italian lyrics, sing in Italian">Italienisch</option>
+                <option value="Portuguese lyrics, sing in Portuguese">Portugiesisch</option>
+                <option value="Arabic lyrics, sing in Arabic">Arabisch</option>
+                <option value="Turkish lyrics, sing in Turkish">Türkisch</option>
+                <option value="Japanese lyrics, sing in Japanese">Japanisch</option>
+                <option value="Korean lyrics, sing in Korean">Koreanisch</option>
+                <option value="Swahili lyrics, sing in Swahili">Swahili</option>
+                <option value="Russian lyrics, sing in Russian">Russisch</option>
+                <option value="Hindi lyrics, sing in Hindi">Hindi</option>
+              </optgroup>
+              <optgroup label="Mehrsprachig (Mix)">
+                <option value="German-English bilingual, natural code-switching">Deutsch / Englisch</option>
+                <option value="Spanish-English bilingual, Spanglish code-switching">Spanisch / Englisch</option>
+                <option value="French-English bilingual, smooth code-switching">Französisch / Englisch</option>
+                <option value="Arabic-English bilingual, East-West fusion">Arabisch / Englisch</option>
+                <option value="Turkish-German bilingual">Türkisch / Deutsch</option>
+                <option value="Korean-English bilingual, K-Pop code-switching">Koreanisch / Englisch</option>
+              </optgroup>
+            </select>
+          </div>
+
+          <!-- VOCAL -->
+          <div class="field-group">
+            <label>Gesangsstil & Stimme</label>
+            <select id="metaVocal">
+              <option value="">– auswählen –</option>
+              <optgroup label="Male Solo">
+                <option value="male rapper, deep powerful voice, rhythmic punch">Male Rap (tief/kraftvoll)</option>
+                <option value="male rapper, melodic singing flow, crooning trap style">Male Rap (melodisch)</option>
+                <option value="male singer, raw emotional delivery, chest voice">Male Vocals (emotional)</option>
+                <option value="male singer, falsetto, ethereal airy high notes">Male Falsetto</option>
+                <option value="male baritone, deep resonant powerful singing">Male Bariton</option>
+                <option value="male spoken word, poetic rhythmic delivery">Male Spoken Word</option>
+              </optgroup>
+              <optgroup label="Female Solo">
+                <option value="female singer, powerful belting chest voice">Female Vocals (kraftvoll)</option>
+                <option value="female singer, breathy intimate whisper-to-full">Female Vocals (breathy)</option>
+                <option value="female singer, soulful R&B melismatic runs">Female Soulful R&B</option>
+                <option value="female rapper, sharp fast aggressive delivery">Female Rap</option>
+                <option value="female singer, ethereal dream-like whispery tone">Female Ethereal</option>
+                <option value="female operatic soprano, classical trained voice">Female Soprano</option>
+              </optgroup>
+              <optgroup label="Duo / Kombination">
+                <option value="male rap verses, female melodic sung chorus contrast">Male Rap + Female Chorus</option>
+                <option value="male rap verses, male melodic hook, consistent tone">Male Rap + Male Chorus</option>
+                <option value="male and female intertwined vocal duet, call and response">Gemischtes Duett</option>
+                <option value="female lead vocals, male rap feature verse">Female Lead + Male Rap</option>
+                <option value="dual male rappers, contrasting flows and tones">Dual Male Rap</option>
+              </optgroup>
+              <optgroup label="Chorisch / Spezial">
+                <option value="layered choir harmonies, SATB arrangement">Chor-Harmonien</option>
+                <option value="gospel choir, massive powerful mass vocals, call and response">Gospel-Chor</option>
+                <option value="stacked lush backing vocal harmonies, wall of sound">Gestapelte Harmonien</option>
+                <option value="heavy autotune melodic trap, pitch-shifted vocal effects">Heavy Autotune</option>
+                <option value="vocoder processed voice, robotic synthetic singing">Vocoder / Talkbox</option>
+                <option value="no vocals, instrumental track only">Instrumental (no vocals)</option>
+              </optgroup>
+            </select>
+          </div>
+        </div>
+
+        <!-- BPM / KEY / STRUCTURE / ENERGY -->
+        <div class="bpm-key-row">
+          <div class="field-group">
+            <label>BPM <span class="bpm-display" id="bpmDisplay">90</span></label>
+            <input type="range" id="metaBpm" min="40" max="220" value="90" oninput="updateBpmDisplay(this)" class="bpm-slider">
+            <div class="bpm-presets">
+              <button class="preset-btn" onclick="setBpm(55)">55 Ballad</button>
+              <button class="preset-btn" onclick="setBpm(65)">65 Slow Jam</button>
+              <button class="preset-btn" onclick="setBpm(75)">75 Lo-Fi</button>
+              <button class="preset-btn" onclick="setBpm(85)">85 Trap</button>
+              <button class="preset-btn" onclick="setBpm(95)">95 R&B</button>
+              <button class="preset-btn" onclick="setBpm(110)">110 Pop</button>
+              <button class="preset-btn" onclick="setBpm(120)">120 Pop</button>
+              <button class="preset-btn" onclick="setBpm(128)">128 Club</button>
+              <button class="preset-btn" onclick="setBpm(140)">140 Techno</button>
+              <button class="preset-btn" onclick="setBpm(160)">160 D&B</button>
+              <button class="preset-btn" onclick="setBpm(174)">174 D&B fast</button>
+            </div>
+          </div>
+
+          <div class="field-group">
+            <label>Tonart / Key</label>
+            <select id="metaKey">
+              <option value="">– Auto –</option>
+              <optgroup label="Moll (Minor — dark)">
+                <option value="key of Am">Am – A-Moll</option>
+                <option value="key of Bm">Bm – H-Moll</option>
+                <option value="key of Cm">Cm – C-Moll</option>
+                <option value="key of Dm">Dm – D-Moll</option>
+                <option value="key of Em">Em – E-Moll</option>
+                <option value="key of Fm">Fm – F-Moll</option>
+                <option value="key of Gm">Gm – G-Moll</option>
+                <option value="key of F#m">F#m – Fis-Moll</option>
+                <option value="key of C#m">C#m – Cis-Moll</option>
+              </optgroup>
+              <optgroup label="Dur (Major — bright)">
+                <option value="key of C">C – C-Dur</option>
+                <option value="key of D">D – D-Dur</option>
+                <option value="key of E">E – E-Dur</option>
+                <option value="key of F">F – F-Dur</option>
+                <option value="key of G">G – G-Dur</option>
+                <option value="key of A">A – A-Dur</option>
+                <option value="key of Bb">Bb – B-Dur</option>
+                <option value="key of Eb">Eb – Es-Dur</option>
+                <option value="key of Ab">Ab – As-Dur</option>
+              </optgroup>
+              <optgroup label="Modal / Skalenmodi">
+                <option value="Dorian mode, minor with raised 6th">Dorisch</option>
+                <option value="Phrygian mode, dark Spanish flavor">Phrygisch</option>
+                <option value="Lydian mode, dreamy raised 4th">Lydisch</option>
+                <option value="Mixolydian mode, bluesy dominant 7th">Mixolydisch</option>
+                <option value="pentatonic scale">Pentatonik</option>
+              </optgroup>
+            </select>
+          </div>
+
+          <div class="field-group">
+            <label>Song-Struktur</label>
+            <select id="metaStructure">
+              <option value="">– Standard –</option>
+              <option value="classic verse-chorus-verse-chorus-bridge-chorus structure">V → C → V → C → B → C</option>
+              <option value="verse-pre-chorus-chorus structure with rising tension">V → PreC → C</option>
+              <option value="minimal two-section verse-chorus loop">Minimal (V + C)</option>
+              <option value="extended outro build-up, epic closing section">Extended Outro Build</option>
+              <option value="through-composed, continuously evolving no repeats">Through-Composed</option>
+              <option value="hook-driven chorus-first structure, immediacy">Hook-First (Chorus zuerst)</option>
+              <option value="intro-verse-chorus-verse-chorus-breakdown-chorus">Mit Breakdown</option>
+              <option value="verse-chorus-bridge-double chorus finale">Mit Double Chorus</option>
+            </select>
+          </div>
+
+          <div class="field-group">
+            <label>Energie-Verlauf</label>
+            <select id="metaEnergy">
+              <option value="">– Standard –</option>
+              <option value="builds gradually from intimate whispers to explosive climax">Aufbauend (Intim → Explosiv)</option>
+              <option value="consistent steady high energy throughout">Konstant (Gleichmäßig)</option>
+              <option value="high energy from the very first bar, immediate impact">Sofort Explosiv</option>
+              <option value="slow burn, building tension throughout, delayed release">Slow Burn (Tension)</option>
+              <option value="dynamic with cinematic drops and euphoric rises">Dynamisch (Drops & Rises)</option>
+              <option value="fades out slowly into contemplative silence">Ausklingend / Introspektiv</option>
+              <option value="wave pattern, alternating intensity between soft and loud">Wellenförmig</option>
+              <option value="constant tension with no release, unresolved, anxious">Durchgehend Spannend</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- ARTIST + PRODUCTION + SPACE + MIX -->
+        <div class="meta-grid" style="margin-top:14px;">
+          <div class="field-group">
+            <label>Artist-Referenz(en)</label>
+            <input type="text" id="metaArtist" placeholder="z.B. The Weeknd, Travis Scott, SZA">
+            <div class="hint-text">Komma-getrennt · beeinflusst Klang-DNA, erscheint NICHT im Output</div>
+          </div>
+          <div class="field-group">
+            <label>Production Style</label>
+            <select id="metaProduction">
+              <option value="">– Standard –</option>
+              <option value="minimalist production, lots of breathing room, sparse arrangement">Minimalist / Sparse</option>
+              <option value="lo-fi aesthetic, warm tape saturation, vinyl warmth, imperfect">Lo-Fi / Warm Tape</option>
+              <option value="polished radio-ready production, clean professional mix">Polished / Radio-Ready</option>
+              <option value="orchestral cinematic sweeping grand production, epic scope">Orchestral / Cinematic</option>
+              <option value="raw gritty underground sound, rough unpolished mix">Raw / Underground</option>
+              <option value="club-ready punchy sub-heavy professional mix, DJ-ready">Club-Ready / DJ Mix</option>
+              <option value="bedroom pop DIY intimate aesthetic, home studio warmth">Bedroom Pop / DIY</option>
+              <option value="heavy trap production, dominant 808s, intricate hi-hat rolls">Heavy Trap</option>
+              <option value="ethereal layered production, reverb-heavy atmospheric walls">Atmospheric / Ethereal</option>
+              <option value="maximalist production, dense layers, every frequency filled">Maximalist / Dense</option>
+              <option value="clean modern pop production, contemporary mainstream">Modern Mainstream</option>
+            </select>
+          </div>
+          <div class="field-group">
+            <label>Räumlichkeit / Space</label>
+            <select id="metaSpace">
+              <option value="">– Standard –</option>
+              <option value="intimate close-mic sound, dry direct no reverb">Trocken / Intim</option>
+              <option value="small room acoustic, slightly natural reverb">Kleiner Raum</option>
+              <option value="medium hall reverb, balanced room sound">Saal / Medium</option>
+              <option value="large cathedral reverb, vast enormous space">Kathedrale / Riesig</option>
+              <option value="deep space ambient reverb, infinite void atmosphere">Space / Infinite</option>
+              <option value="underwater submerged muffled aesthetic">Unterwasser / Muffled</option>
+            </select>
+          </div>
+          <div class="field-group">
+            <label>Mixing / Mastering Vibe</label>
+            <select id="metaMix">
+              <option value="">– Standard –</option>
+              <option value="heavily compressed pumping sidechain effect">Pumping Sidechain</option>
+              <option value="wide stereo image, panned elements, immersive">Wide Stereo Mix</option>
+              <option value="mono compatible, punchy centered mix">Mono / Punchy</option>
+              <option value="dynamic mix, no brickwall limiting, natural peaks">Dynamisch / Natural</option>
+              <option value="loudness-war maximized, heavy limiting, dense">Maximized / Loud</option>
+              <option value="high-res audiophile mix, subtle details, depth">Audiophile / Hi-Res</option>
+            </select>
+          </div>
+        </div>
+
+      </div><!-- /collapsible -->
+    </div>
+
+    <!-- CARD 3: MOOD CHIPS -->
+    <div class="card">
+      <div class="card-title">
+        Stimmung / Mood
+        <span class="tag">Mehrfachauswahl</span>
+      </div>
+
+      <span class="chip-group-label">— Primäre Emotionen —</span>
+      <div class="chip-grid" id="moodChipsPrimary"></div>
+
+      <span class="chip-group-label">— Atmosphäre & Textur —</span>
+      <div class="chip-grid" id="moodChipsAtmo"></div>
+
+      <span class="chip-group-label">— Energie & Bewegung —</span>
+      <div class="chip-grid" id="moodChipsEnergy"></div>
+
+      <div style="margin-top:12px;">
+        <input type="text" id="metaMoodCustom" placeholder="+ Eigene Mood-Tags (komma-getrennt, z.B. cinematic, raw, hopeful)">
+      </div>
+    </div>
+
+    <!-- CARD 4: INSTRUMENTS -->
+    <div class="card">
+      <div class="card-title">
+        Instrumente & Sound-Elemente
+        <span class="tag">Mehrfachauswahl</span>
+      </div>
+
+      <span class="chip-group-label">— Percussion / Drums —</span>
+      <div class="chip-grid" id="instChipsDrums"></div>
+
+      <span class="chip-group-label">— Keys / Pads / Leads —</span>
+      <div class="chip-grid" id="instChipsKeys"></div>
+
+      <span class="chip-group-label">— Bass —</span>
+      <div class="chip-grid" id="instChipsBass"></div>
+
+      <span class="chip-group-label">— Gitarren / Strings / Bläser —</span>
+      <div class="chip-grid" id="instChipsOrch"></div>
+
+      <span class="chip-group-label">— Elektronik / FX —</span>
+      <div class="chip-grid" id="instChipsFX"></div>
+    </div>
+
+    <button class="btn-primary" onclick="runProtokoll()">▶ PROTOKOLL STARTEN — v7.1 · 4-Phasen-KI</button>
+
+  </div><!-- /section-input -->
+
+  <!-- ════════════════════════════════════════
+       SECTION: RESULTS
+  ═══════════════════════════════════════════ -->
+  <div id="section-results" style="display:none;">
+    <div class="result-section-inner">
+
+      <div class="card" id="cardValidation">
+        <div class="card-title">Phase 1 — Validierungsbericht</div>
+        <div id="validationOutput"></div>
+      </div>
+
+      <div class="card" id="cardAnalysis" style="display:none;">
+        <div class="card-title">Phase 2 — KI-Struktur-Analyse <span class="model-badge" id="analysisBadge">KI</span> <span class="new-badge">v7.1</span></div>
+        <div class="analysis-grid" id="analysisOutput"></div>
+      </div>
+
+      <div class="card" id="cardStyle" style="display:none;">
+        <div class="card-title">Phase 3 — Finaler Style Prompt <span id="sunoModelBadge" class="v7-badge">v5.5</span></div>
+        <div class="char-indicator" id="styleCharIndicator"></div>
+        <div class="output-block" id="styleOutput"></div>
+        <button class="btn-copy" id="btnCopyStyle">⎘ Style Prompt kopieren</button>
+      </div>
+
+      <div class="card" id="cardLyrics" style="display:none;">
+        <div class="card-title">Phase 4 — Annotated Lyrics <span id="lyricsModelBadge" class="v7-badge">v5.5</span></div>
+        <div class="output-block" id="lyricsOutput"></div>
+        <button class="btn-copy" id="btnCopyLyrics">⎘ Annotated Lyrics kopieren</button>
+      </div>
+
+      <div class="card" id="cardHistory" style="display:none;">
+        <div class="card-title">📂 Verlauf (localStorage)</div>
+        <div id="historyOutput"></div>
+      </div>
+
+    </div>
+
+    <div class="result-actions">
+      <button class="btn-reset" onclick="resetAll()">↺ Neuer Song</button>
+      <button class="btn-hist"  onclick="toggleHistory()">📂 Verlauf</button>
+      <button class="btn-export" onclick="exportSession()">⬇ JSON Export</button>
+    </div>
+  </div>
+
+</div><!-- /container -->
+
+<script>
+// ════════════════════════════════════════════
+// STATE
+// ════════════════════════════════════════════
+let currentProvider  = 'gemini';
+let currentModels    = { gemini: 'gemini-2.5-flash', openai: 'gpt-4o', claude: 'claude-sonnet-4-5' };
+let lastStylePrompt  = '';
+let lastLyrics       = '';
+let lastMeta         = {};
+
+// ════════════════════════════════════════════
+// DATA CONSTANTS — EXPANDED
+// ════════════════════════════════════════════
+const MOOD_PRIMARY = [
+  'melancholic','nostalgic','hopeful','euphoric','dark','romantic','aggressive',
+  'introspective','spiritual','rebellious','vulnerable','powerful','triumphant',
+  'heartbroken','bittersweet','longing','cathartic','anxious','desperate','joyful'
+];
+const MOOD_ATMO = [
+  'dreamy','cinematic','raw','intimate','haunted','ethereal','surreal','gritty',
+  'hypnotic','mysterious','tense','ominous','warm','cold','neon-lit','foggy',
+  'cosmic','underground','sacred','nocturnal'
+];
+const MOOD_ENERGY = [
+  'sensual','playful','frantic','restless','focused','relentless','explosive',
+  'building','simmering','cool','laid-back','frenetic','meditative','urgent'
+];
+
+const INST_DRUMS = [
+  '808s','Sub Kick','Trap Drums','Live Drums','Drum Machine','Acoustic Drums',
+  'Hi-Hats','Open Hi-Hats','Snare','Rimshot','Claps','Percussion',
+  'Breakbeat','Boom Bap Drums','Brushed Drums','Brush Kit'
+];
+const INST_KEYS = [
+  'Piano','Rhodes','Fender Rhodes','Wurlitzer','Mellotron','Organ','Hammond Organ',
+  'Synth Pads','Synth Lead','Synth Arp','Synth Chords','Synth Stabs',
+  'Analog Synth','Ambient Keys','Choir Pads','Atmospheric Pads'
+];
+const INST_BASS = [
+  'Sub Bass','808 Bass','Deep Bass','Slide Bass','Bass Guitar','Fretless Bass',
+  'Upright Bass','Synth Bass','Moog Bass','Sidechain Bass','Distorted Bass'
+];
+const INST_ORCH = [
+  'Acoustic Guitar','Electric Guitar','Distorted Guitar','Slide Guitar','12-String Guitar',
+  'Strings','Violin','Cello','Viola','String Section','Brass','Trumpet','Trombone',
+  'French Horn','Flute','Saxophone','Oboe','Choir','Gospel Choir','Layered Vocals'
+];
+const INST_FX = [
+  'Vinyl Crackle','Tape Saturation','Tape Hiss','Reverb Swells','Delay Trails',
+  'Cinematic FX','Impact Hits','Riser FX','White Noise','Glitch FX',
+  'Field Recordings','Rain / Nature','Crowd Noise','Lo-Fi Filter'
+];
+
+const GENRE_DEFAULTS = {
+  'Cloud Rap':          { bpm: 85,  key: 'key of Am',  inst: ['808s','Synth Pads','Hi-Hats','Ambient Pads'] },
+  'Dark Trap':          { bpm: 80,  key: 'key of Cm',  inst: ['808s','Trap Drums','Synth Pads','Sub Bass'] },
+  'Cinematic Trap':     { bpm: 83,  key: 'key of Dm',  inst: ['Strings','808s','Cinematic FX','Brass','Trap Drums'] },
+  'Melodic Rap':        { bpm: 90,  key: 'key of Am',  inst: ['808s','Piano','Synth Pads','Trap Drums'] },
+  'Boom Bap':           { bpm: 92,  key: 'key of Fm',  inst: ['Live Drums','Piano','Bass Guitar','Sample'] },
+  'Conscious Hip-Hop':  { bpm: 88,  key: 'key of Dm',  inst: ['Live Drums','Piano','Bass Guitar','Rhodes'] },
+  'Lo-Fi Hip-Hop':      { bpm: 75,  key: 'key of Dm',  inst: ['Piano','Rhodes','Vinyl Crackle','Tape Saturation','Brushed Drums'] },
+  'Drill':              { bpm: 67,  key: 'key of Cm',  inst: ['808s','Trap Drums','Strings','Hi-Hats'] },
+  'UK Drill':           { bpm: 70,  key: 'key of Cm',  inst: ['808s','Trap Drums','Sub Bass','Piano'] },
+  'Phonk':              { bpm: 130, key: 'key of Am',  inst: ['808s','Brass','Trap Drums','Vinyl Crackle'] },
+  'Memphis Phonk':      { bpm: 125, key: 'key of Am',  inst: ['808s','Choir Pads','Vinyl Crackle','Drum Machine'] },
+  'Gangsta Rap':        { bpm: 90,  key: 'key of Gm',  inst: ['Live Drums','Bass Guitar','Synth Pads','Piano'] },
+  'Mumble Rap':         { bpm: 88,  key: 'key of Am',  inst: ['808s','Synth Arp','Trap Drums','Reverb Swells'] },
+  'R&B':                { bpm: 95,  key: 'key of Gm',  inst: ['Rhodes','Bass Guitar','Live Drums','Strings'] },
+  'Neo-Soul':           { bpm: 88,  key: 'key of Fm',  inst: ['Rhodes','Bass Guitar','Live Drums','Brass','Acoustic Guitar'] },
+  'Alternative R&B':    { bpm: 92,  key: 'key of Am',  inst: ['Synth Pads','808s','Electric Guitar','Strings'] },
+  'Emotional R&B':      { bpm: 90,  key: 'key of Bm',  inst: ['Piano','Strings','Sub Bass','Choir Pads'] },
+  'Contemporary R&B':   { bpm: 98,  key: 'key of Am',  inst: ['Rhodes','808s','Synth Pads','Hi-Hats'] },
+  'Gospel R&B':         { bpm: 95,  key: 'key of Eb',  inst: ['Piano','Gospel Choir','Live Drums','Brass'] },
+  'Quiet Storm':        { bpm: 80,  key: 'key of Dm',  inst: ['Rhodes','Bass Guitar','Brushed Drums','Strings'] },
+  'Pop':                { bpm: 120, key: 'key of G',   inst: ['Synth Pads','Drum Machine','Bass Guitar','Synth Lead'] },
+  'Indie Pop':          { bpm: 110, key: 'key of D',   inst: ['Acoustic Guitar','Synth Pads','Live Drums','Bass Guitar'] },
+  'Electro Pop':        { bpm: 128, key: 'key of Am',  inst: ['Synth Lead','Drum Machine','Sub Bass','Synth Arp'] },
+  'Synth Pop':          { bpm: 125, key: 'key of Cm',  inst: ['Synth Pads','Drum Machine','Synth Lead','Sub Bass'] },
+  'Dream Pop':          { bpm: 95,  key: 'key of Dm',  inst: ['Reverb Swells','Synth Pads','Live Drums','Acoustic Guitar','Choir Pads'] },
+  'Art Pop':            { bpm: 105, key: 'key of Em',  inst: ['Piano','Strings','Drum Machine','Synth Pads'] },
+  'Dark Pop':           { bpm: 112, key: 'key of Cm',  inst: ['Synth Pads','808s','Electric Guitar','Ambient Keys'] },
+  'Hyperpop':           { bpm: 145, key: 'key of Am',  inst: ['808s','Synth Lead','Glitch FX','Drum Machine','Synth Arp'] },
+  'K-Pop':              { bpm: 120, key: 'key of Am',  inst: ['Synth Pads','Drum Machine','Bass Guitar','Layered Vocals'] },
+  'House':              { bpm: 126, key: 'key of Am',  inst: ['Piano','Sub Bass','Hi-Hats','Drum Machine','Organ'] },
+  'Deep House':         { bpm: 122, key: 'key of Fm',  inst: ['Piano','Deep Bass','Ambient Pads','Hi-Hats'] },
+  'Tech House':         { bpm: 128, key: 'key of Am',  inst: ['Synth Bass','Drum Machine','Percussion','Riser FX'] },
+  'Progressive House':  { bpm: 130, key: 'key of Am',  inst: ['Synth Lead','Synth Pads','Sub Bass','Drum Machine'] },
+  'Techno':             { bpm: 140, key: 'key of Am',  inst: ['Synth Arp','Drum Machine','Ambient Textures','Impact Hits'] },
+  'Minimal Techno':     { bpm: 135, key: 'key of Am',  inst: ['Drum Machine','Percussion','Synth Bass','Delay Trails'] },
+  'Industrial Techno':  { bpm: 145, key: 'key of Cm',  inst: ['Drum Machine','Impact Hits','Distorted Bass','Glitch FX'] },
+  'Drum & Bass':        { bpm: 174, key: 'key of Am',  inst: ['Breakbeat','Sub Bass','Synth Pads','Riser FX'] },
+  'Liquid DnB':         { bpm: 170, key: 'key of Dm',  inst: ['Breakbeat','Fender Rhodes','Sub Bass','Synth Pads'] },
+  'Dubstep':            { bpm: 140, key: 'key of Cm',  inst: ['808 Bass','Drum Machine','Synth Lead','Impact Hits'] },
+  'Future Bass':        { bpm: 150, key: 'key of Am',  inst: ['Synth Pads','808s','Drum Machine','Choir Pads'] },
+  'Trance':             { bpm: 138, key: 'key of Am',  inst: ['Synth Arp','Synth Lead','Drum Machine','Synth Pads'] },
+  'Ambient':            { bpm: 70,  key: 'key of Em',  inst: ['Synth Pads','Reverb Swells','Piano','Atmospheric Pads'] },
+  'Dark Ambient':       { bpm: 60,  key: 'key of Cm',  inst: ['Ambient Keys','Cinematic FX','Choir Pads','Field Recordings'] },
+  'Synthwave':          { bpm: 100, key: 'key of Dm',  inst: ['Synth Lead','Drum Machine','Sub Bass','Synth Pads'] },
+  'Retrowave':          { bpm: 105, key: 'key of Am',  inst: ['Synth Lead','Drum Machine','Synth Arp','Synth Pads'] },
+  'Darkwave':           { bpm: 110, key: 'key of Cm',  inst: ['Synth Pads','Drum Machine','Electric Guitar','Organ'] },
+  'Vaporwave':          { bpm: 80,  key: 'key of Dm',  inst: ['Rhodes','Vinyl Crackle','Synth Pads','Tape Saturation'] },
+  'Afrobeats':          { bpm: 105, key: 'key of G',   inst: ['Live Drums','Bass Guitar','Acoustic Guitar','Percussion'] },
+  'Amapiano':           { bpm: 112, key: 'key of Am',  inst: ['Piano','Deep Bass','Log Drum','Live Drums'] },
+  'Reggaeton':          { bpm: 95,  key: 'key of Am',  inst: ['808s','Bass Guitar','Synth Pads','Percussion'] },
+  'Latin Trap':         { bpm: 88,  key: 'key of Cm',  inst: ['808s','Trap Drums','Brass','Piano'] },
+  'Dancehall':          { bpm: 100, key: 'key of Am',  inst: ['Drum Machine','Bass Guitar','Synth Pads','Percussion'] },
+  'Indie Rock':         { bpm: 120, key: 'key of D',   inst: ['Electric Guitar','Live Drums','Bass Guitar','Acoustic Guitar'] },
+  'Shoegaze':           { bpm: 105, key: 'key of Em',  inst: ['Distorted Guitar','Reverb Swells','Live Drums','Synth Pads'] },
+  'Post-Punk':          { bpm: 115, key: 'key of Dm',  inst: ['Electric Guitar','Live Drums','Bass Guitar','Synth Pads'] },
+  'Metalcore':          { bpm: 160, key: 'key of Em',  inst: ['Distorted Guitar','Acoustic Drums','Bass Guitar','Impact Hits'] },
+  'Jazz':               { bpm: 130, key: 'key of Fm',  inst: ['Piano','Saxophone','Live Drums','Upright Bass','Trumpet'] },
+  'Nu Jazz':            { bpm: 100, key: 'key of Fm',  inst: ['Piano','Double Bass','Brushed Drums','Synth Pads'] },
+  'Neo-Classical':      { bpm: 72,  key: 'key of Am',  inst: ['Piano','Strings','Cello','Violin'] },
+  'Cinematic Score':    { bpm: 75,  key: 'key of Cm',  inst: ['Strings','Choir','Brass','Cinematic FX','Piano'] },
+  'Gospel':             { bpm: 95,  key: 'key of Eb',  inst: ['Piano','Gospel Choir','Live Drums','Claps','Organ'] },
+  'Funk':               { bpm: 105, key: 'key of Am',  inst: ['Electric Guitar','Bass Guitar','Live Drums','Brass','Rhodes'] },
+};
+
+// ════════════════════════════════════════════
+// INIT
+// ════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', () => {
+  initChipGroup('moodChipsPrimary', MOOD_PRIMARY);
+  initChipGroup('moodChipsAtmo',    MOOD_ATMO);
+  initChipGroup('moodChipsEnergy',  MOOD_ENERGY);
+  initChipGroup('instChipsDrums',   INST_DRUMS);
+  initChipGroup('instChipsKeys',    INST_KEYS);
+  initChipGroup('instChipsBass',    INST_BASS);
+  initChipGroup('instChipsOrch',    INST_ORCH);
+  initChipGroup('instChipsFX',      INST_FX);
+  updateBpmDisplay(document.getElementById('metaBpm'));
+  loadStoredKeys();
+  setStep(1);
+});
+
+// ════════════════════════════════════════════
+// KEY PERSISTENCE
+// ════════════════════════════════════════════
+function loadStoredKeys() {
+  ['gemini','openai','claude'].forEach(p => {
+    const k = sessionStorage.getItem('apikey_' + p);
+    if (k) document.getElementById('key-' + p).value = k;
+  });
+}
+function saveKey(prov) {
+  const val = document.getElementById('key-' + prov).value.trim();
+  if (val) sessionStorage.setItem('apikey_' + prov, val);
+}
+
+// ════════════════════════════════════════════
+// PROVIDER SWITCHER
+// ════════════════════════════════════════════
+function setProvider(prov) {
+  currentProvider = prov;
+  document.querySelectorAll('.provider-tab').forEach(t => {
+    t.classList.toggle('active', t.dataset.prov === prov);
+  });
+  document.querySelectorAll('.provider-cfg').forEach(c => c.style.display = 'none');
+  document.getElementById('cfg-' + prov).style.display = 'block';
+}
+
+function setModel(prov, model, el) {
+  currentModels[prov] = model;
+  el.closest('.provider-model-row').querySelectorAll('.model-chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+}
+
+async function testKey(prov) {
+  const key = document.getElementById('key-' + prov).value.trim();
+  const status = document.getElementById('status-' + prov);
+  if (!key) { status.className='key-status err'; status.textContent='⚠ Kein Key eingegeben'; return; }
+  status.className='key-status'; status.textContent='Teste...';
+  saveKey(prov);
+  try {
+    if (prov === 'gemini') {
+      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ contents:[{parts:[{text:'Hi'}]}], generationConfig:{maxOutputTokens:10} })
+      });
+      if (r.ok) { status.className='key-status ok'; status.textContent='✓ Gemini Key gültig'; }
+      else throw new Error(r.status);
+    } else if (prov === 'openai') {
+      const r = await fetch('https://api.openai.com/v1/chat/completions', {
+        method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
+        body: JSON.stringify({ model:'gpt-4o-mini', messages:[{role:'user',content:'Hi'}], max_tokens:5 })
+      });
+      if (r.ok) { status.className='key-status ok'; status.textContent='✓ OpenAI Key gültig'; }
+      else throw new Error(r.status);
+    } else if (prov === 'claude') {
+      const r = await fetch('https://api.anthropic.com/v1/messages', {
+        method:'POST',
+        headers:{'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01'},
+        body: JSON.stringify({ model:'claude-haiku-4-5-20251001', max_tokens:10, messages:[{role:'user',content:'Hi'}] })
+      });
+      if (r.ok) { status.className='key-status ok'; status.textContent='✓ Claude Key gültig'; }
+      else throw new Error(r.status);
+    }
+  } catch(e) {
+    status.className='key-status err'; status.textContent=`✗ Fehler: ${e.message}`;
+  }
+}
+
+// ════════════════════════════════════════════
+// UNIVERSAL AI CALL
+// ════════════════════════════════════════════
+async function callAI(systemPrompt, userMessage, temperature, jsonMode = false) {
+  const prov = currentProvider;
+  const key  = document.getElementById('key-' + prov).value.trim();
+  const temp = temperature ?? (parseFloat(document.getElementById('aiTemp').value) / 10);
+
+  if (!key) throw new Error(`Kein API Key für ${prov} eingegeben.`);
+  saveKey(prov);
+
+  if (prov === 'gemini') return callGemini(key, systemPrompt, userMessage, temp, jsonMode);
+  if (prov === 'openai') return callOpenAI(key, systemPrompt, userMessage, temp, jsonMode);
+  if (prov === 'claude') return callClaude(key, systemPrompt, userMessage, temp);
+  throw new Error('Unbekannter Provider');
+}
+
+async function callGemini(key, system, user, temp, jsonMode = false) {
+  const model = currentModels.gemini;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
+  const genConfig = { temperature: temp, maxOutputTokens: 8000, topP: 0.92 };
+  if (jsonMode) genConfig.responseMimeType = 'application/json';
+  const res = await fetch(url, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: system + '\n\n=== INPUT ===\n' + user }] }],
+      generationConfig: genConfig
+    })
+  });
+  if (!res.ok) throw new Error(`Gemini ${res.status}: ${await res.text()}`);
+  const d = await res.json();
+  return d.candidates[0].content.parts[0].text.trim();
+}
+
+async function callOpenAI(key, system, user, temp, jsonMode = false) {
+  const model = currentModels.openai;
+  const body = {
+    model,
+    messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
+    max_tokens: 4000,
+    temperature: Math.min(temp, 2)
+  };
+  if (jsonMode) body.response_format = { type: 'json_object' };
+  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) throw new Error(`OpenAI ${res.status}: ${await res.text()}`);
+  const d = await res.json();
+  return d.choices[0].message.content.trim();
+}
+
+async function callClaude(key, system, user, temp) {
+  const model = currentModels.claude;
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': key,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true'
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 4000,
+      temperature: Math.min(temp, 1),
+      system,
+      messages: [{ role: 'user', content: user }]
+    })
+  });
+  if (!res.ok) throw new Error(`Claude ${res.status}: ${await res.text()}`);
+  const d = await res.json();
+  return d.content[0].text.trim();
+}
+
+// ════════════════════════════════════════════
+// CHIP SYSTEM
+// ════════════════════════════════════════════
+function initChipGroup(containerId, options) {
+  const c = document.getElementById(containerId);
+  c.innerHTML = '';
+  options.forEach(opt => {
+    const chip = document.createElement('div');
+    chip.className = 'chip'; chip.dataset.value = opt; chip.textContent = opt;
+    chip.onclick = () => chip.classList.toggle('active');
+    c.appendChild(chip);
+  });
+}
+function getSelectedChips(...ids) {
+  return ids.flatMap(id =>
+    Array.from(document.querySelectorAll(`#${id} .chip.active`)).map(c => c.dataset.value)
+  );
+}
+function setChips(ids, values) {
+  ids.forEach(id => {
+    document.querySelectorAll(`#${id} .chip`).forEach(c => {
+      c.classList.toggle('active', values.includes(c.dataset.value));
+    });
+  });
+}
+
+// ════════════════════════════════════════════
+// COLLAPSIBLE
+// ════════════════════════════════════════════
+function toggleCollapse(bodyId, arrowId) {
+  document.getElementById(bodyId).classList.toggle('open');
+  document.getElementById(arrowId).classList.toggle('open');
+}
+
+// ════════════════════════════════════════════
+// CHAR COUNTER + TEXT TOOLS
+// ════════════════════════════════════════════
+function updateCharCounter() {
+  const t = document.getElementById('rawText').value;
+  const lines = t ? t.split('\n').length : 0;
+  const words = t ? t.trim().split(/\s+/).filter(w => w).length : 0;
+  document.getElementById('rawTextCounter').textContent = `${lines} Zeilen · ${words} Wörter · ${t.length} Zeichen`;
+}
+function cleanMetaTags() {
+  let t = document.getElementById('rawText').value;
+  t = t.replace(/\[[^\]]*\]/g,'').replace(/\([^)]*\)/g,'').replace(/ +/g,' ').split('\n').map(l=>l.trim()).join('\n').replace(/\n{3,}/g,'\n\n');
+  document.getElementById('rawText').value = t.trim(); updateCharCounter();
+}
+function clearText() {
+  if (confirm('Songtext wirklich löschen?')) { document.getElementById('rawText').value = ''; updateCharCounter(); }
+}
+function detectStructureLocal() {
+  const text = document.getElementById('rawText').value;
+  const patterns = [
+    { re: /\b(intro)\b/i,           label:'INTRO' },
+    { re: /\b(verse|vers|strophe|v\s*\d)\b/i, label:'VERSE' },
+    { re: /\b(pre.?chorus|pre.?hook|vorbau)\b/i, label:'PRE-CHORUS' },
+    { re: /\b(chorus|hook|refrain)\b/i, label:'CHORUS' },
+    { re: /\b(bridge|brücke)\b/i,   label:'BRIDGE' },
+    { re: /\b(outro|fade)\b/i,      label:'OUTRO' },
+    { re: /\b(breakdown|break)\b/i, label:'BREAKDOWN' },
+    { re: /\b(skit|interlude)\b/i,  label:'INTERLUDE' },
+  ];
+  const found = [];
+  text.split('\n').forEach(line => patterns.forEach(p => { if (p.re.test(line) && !found.includes(p.label)) found.push(p.label); }));
+  alert(found.length
+    ? `Erkannte Sektionen:\n${found.join(' → ')}\n\nWerden automatisch berücksichtigt.`
+    : 'Keine Sektions-Tags gefunden — KI leitet Struktur ab.');
+}
+
+// ════════════════════════════════════════════
+// BPM
+// ════════════════════════════════════════════
+function updateBpmDisplay(input) {
+  const val = parseInt((input||document.getElementById('metaBpm')).value);
+  document.getElementById('bpmDisplay').textContent = val;
+  const slider = document.getElementById('metaBpm');
+  slider.style.setProperty('--bpm-pct', (((val-40)/(220-40))*100).toFixed(1)+'%');
+}
+function setBpm(val) { const s=document.getElementById('metaBpm'); s.value=val; updateBpmDisplay(s); }
+
+// ════════════════════════════════════════════
+// GENRE DEFAULTS
+// ════════════════════════════════════════════
+function applyGenreDefaults() {
+  const genre = document.getElementById('metaGenre').value;
+  const d = GENRE_DEFAULTS[genre];
+  if (!d) return;
+  if (d.bpm)  setBpm(d.bpm);
+  if (d.key)  document.getElementById('metaKey').value = d.key;
+  if (d.inst) setChips(['instChipsDrums','instChipsKeys','instChipsBass','instChipsOrch','instChipsFX'], d.inst);
+}
+
+// ════════════════════════════════════════════
+// META OBJECT
+// ════════════════════════════════════════════
+function buildMetaObject() {
+  const moodSelected = getSelectedChips('moodChipsPrimary','moodChipsAtmo','moodChipsEnergy');
+  const moodCustom   = (document.getElementById('metaMoodCustom').value||'').split(',').map(m=>m.trim()).filter(Boolean);
+  const allMoods     = [...new Set([...moodSelected,...moodCustom])];
+  const instSelected = getSelectedChips('instChipsDrums','instChipsKeys','instChipsBass','instChipsOrch','instChipsFX');
+
+  return {
+    genre:      document.getElementById('metaGenre').value     || 'Cloud Rap',
+    lang:       document.getElementById('metaLang').value      || 'German-English bilingual',
+    mood:       allMoods.length ? allMoods : ['melancholic','introspective','longing'],
+    vocal:      document.getElementById('metaVocal').value     || '',
+    artist:     document.getElementById('metaArtist').value.trim(),
+    bpm:        document.getElementById('metaBpm').value,
+    key:        document.getElementById('metaKey').value,
+    era:        document.getElementById('metaEra').value,
+    structure:  document.getElementById('metaStructure').value,
+    energy:     document.getElementById('metaEnergy').value,
+    production: document.getElementById('metaProduction').value,
+    space:      document.getElementById('metaSpace').value,
+    mix:        document.getElementById('metaMix').value,
+    instruments:instSelected,
+    sunoModel:  document.getElementById('sunoModel').value,
+    provider:   currentProvider,
+    model:      currentModels[currentProvider],
+  };
+}
+
+// ════════════════════════════════════════════
+// PROMPT BUILDERS — SUNO v5.5 & v4.5 AWARE
+// ════════════════════════════════════════════
+function buildStyleSystemPrompt(meta) {
+  const sm = meta.sunoModel;
+  const isV45 = sm === 'v4.5';
+  const parts = [];
+
+  if (meta.genre)       parts.push(`Genre: ${meta.genre}`);
+  if (meta.era)         parts.push(`Ära/Sound: ${meta.era}`);
+  if (meta.bpm)         parts.push(`BPM: ${meta.bpm}`);
+  if (meta.key)         parts.push(`Tonart: ${meta.key}`);
+  if (meta.mood?.length)parts.push(`Mood/Stimmung: ${meta.mood.join(', ')}`);
+  if (meta.vocal)       parts.push(`Vocals: ${meta.vocal}`);
+  if (meta.instruments?.length) parts.push(`Instrumente: ${meta.instruments.join(', ')}`);
+  if (meta.production)  parts.push(`Production Style: ${meta.production}`);
+  if (meta.space)       parts.push(`Räumlichkeit: ${meta.space}`);
+  if (meta.mix)         parts.push(`Mix/Mastering: ${meta.mix}`);
+  if (meta.energy)      parts.push(`Energie-Verlauf: ${meta.energy}`);
+  if (meta.structure)   parts.push(`Song-Struktur: ${meta.structure}`);
+  if (meta.artist)      parts.push(`Artist-DNA (abstrahieren — NICHT nennen): ${meta.artist}`);
+
+  const versionNote = isV45
+    ? `SUNO v4.5-ALL (FREE-USER) SPEZIFIKA — ZWINGEND EINZUHALTEN:
+- Schreibe den Style Prompt als fließenden, beschreibenden Prosatext aus 2–4 zusammenhängenden Sätzen.
+- KEIN Keyword-Stuffing, KEINE reinen komma-getrennten Tag-Listen — das v4.5-all Free-Modell verarbeitet Kontext-Sätze deutlich besser und stellt einen deutlich höheren Kontextbezug her.
+- KEINE eckigen Klammern mit Parameter-Tags ([bpm:X], [key:X], [style:X] etc.) — diese sind exklusiv Paid-Modellen vorbehalten und werden vom Free-Parser ignoriert oder falsch interpretiert.
+- Beschreibe Klang, Atmosphäre, Tempo, Stimmung und Gesangsstil in natürlichen, beschreibenden Sätzen.
+- ZWINGEND: Der finale Style Prompt endet mit einem Punkt (.)`
+    : `SUNO v5.5 SPEZIFIKA: Keine eckigen Klammern im Style Prompt. Reiner Deskriptor-String. Natürliche Beschreibungssprache bevorzugen. Deskriptoren komma-getrennt ohne Klammern. ZWINGEND: Der Style Prompt endet mit einem Punkt (.)`;
+
+  return `Du bist ein Experte für Suno AI ${sm} Style Prompts.
+
+${versionNote}
+
+UNIVERSELLE REGELN:
+- Länge: max. 850 Zeichen für v5.5 / max. 900 Zeichen für v4.5. Optimal: 600–800 Zeichen.
+- FRONT-LOADED: die wichtigsten Genre + Mood Deskriptoren ZUERST (höchste Modell-Gewichtung)
+- v5.5: Komma-separierte Deskriptoren — KEINE ganzen Sätze. v4.5-all: Beschreibende Sätze — KEIN Tag-Stuffing.
+- Artist-Referenz → abstrahieren: Klangeigenschaften ableiten, Künstlernamen NIEMALS ausgeben
+- BPM und Tonart in natürlicher Deskriptorform einbauen ("90 BPM", "key of Am")
+- Instrumente sehr spezifisch und klanglich präzise formulieren
+- Energie-Flow einarbeiten: z.B. "intimate breathy verses, explosive layered chorus climax"
+- Sprachhinweise (z.B. "German lyrics") einbauen wenn sprachspezifisch
+- Keine Wiederholungen, keine Artist-Namen, keine Meta-Kommentare
+- Maximale Informationsdichte pro Zeichen
+- ABSOLUT ZWINGEND: Der finale Style Prompt endet mit einem Punkt (.)
+
+SONG PARAMETER:
+${parts.join('\n')}
+
+Antworte NUR mit dem fertigen Style Prompt String. Kein Präfix, kein Suffix, keine Anführungszeichen, keine Erklärungen.`;
+}
+
+function buildLyricsSystemPrompt(meta) {
+  const sm       = meta.sunoModel;
+  const moodStr  = meta.mood?.join(', ') || 'melancholic, introspective';
+  const energyStr = meta.energy ? meta.energy.split(',')[0] : 'Dynamic';
+  const langNote = meta.lang
+    ? `KRITISCH: Die Lyrics sind in "${meta.lang}" — behalte die EXAKTE Originalsprache ohne Ausnahme. Keine Übersetzungen, keine Umformulierungen.`
+    : '';
+  const isV45 = sm === 'v4.5';
+
+  const annotationRules = isV45
+    ? `SUNO v4.5-ALL (FREE-USER) ANNOTATION-REGELN — ALLE PUNKTE ZWINGEND:
+1. KEIN Header-Tag und KEINE Metadaten-Tags in der ersten Zeile — [Mood:...], [BPM:...], [key:...], [Vocals:...] sind exklusiv Paid-Modellen vorbehalten und dürfen unter keinen Umständen verwendet werden.
+2. Section-Tags: einfache, klar benannte eckige Klammern — [Verse 1], [Verse 2], [Chorus], [Bridge], [Pre-Chorus], [Outro], [Intro].
+3. STACKED TAGS — ABSOLUT ZWINGEND: Niemals mehrere Tags durch Pipes (|) auf einer Zeile trennen. Tags IMMER einzeln auf separaten, aufeinanderfolgenden Zeilen stapeln.
+   RICHTIG (so muss es aussehen):
+   [Chorus]
+   [Belting]
+   [Emotional Peak]
+   FALSCH (niemals so):
+   [Chorus | Belting | Emotional Peak]
+4. Erlaubte Inline-Stil-Tags (sparsam einsetzen, max. 1 pro 3 Zeilen im Verse):
+   [Melodic], [Breathy], [Belt], [Whisper], [Rap], [Hook], [Build], [Drop]
+5. GESANGSDYNAMIK — ZWINGEND UMSETZEN:
+   - Satzzeichen strategisch für optimalen Stimmfluss und Atempausen einsetzen: Komma (,) erzeugt eine kurze Mikro-Pause, Punkt (.) erzeugt eine vollständige Atempause und markiert das Phrasierungsende.
+   - Ad-libs korrekt in runden Klammern abbilden: (yeah), (uh), (come on), (hey) — NIEMALS in eckigen Klammern oder als Section-Tag.
+   - Nachdruck und emotionale Spitzen durch GROSSBUCHSTABEN und Ausrufezeichen erzwingen: z.B. "ich will MEHR!", "das BRENNT!", "NIEMALS wieder zurück!"
+6. LEERE ZEILE zwischen jeder Song-Sektion — zwingend und ausnahmslos.
+7. Originaltext EXAKT Wort für Wort beibehalten — kein einziges Wort ändern, keine Umformulierungen, keine Ergänzungen, keine Auslassungen.`
+    : `SUNO v5.5 ANNOTATION-REGELN:
+1. ERSTE ZEILE exakt: [Header: Mood: ${moodStr} | Energy: ${energyStr} | Vocals: ${meta.vocal||'Mixed'} | Model: v5.5]
+2. Section-Tags Großbuchstaben: [VERSE 1], [VERSE 2], [PRE-CHORUS], [CHORUS], [BRIDGE], [OUTRO], [INTRO], [BREAKDOWN]
+3. STACKED TAGS — ABSOLUT ZWINGEND: Niemals mehrere Tags durch Pipes (|) auf einer Zeile trennen. Tags IMMER einzeln auf separaten, aufeinanderfolgenden Zeilen stapeln.
+   RICHTIG (so muss es aussehen):
+   [CHORUS]
+   [Powerful]
+   [Emotional Peak]
+   [Layered Vocals]
+   FALSCH (niemals so):
+   [CHORUS | Powerful | Emotional Peak | Layered Vocals]
+4. Line-Directives SPARSAM und gezielt einsetzen:
+   - [Breathy] — intime, geflüsterte Passagen
+   - [Melodic] — gesanglichere Phrasierungen
+   - [Build] — unmittelbar vor Energie-Anstieg
+   - [Whisper] — sehr leise Momente
+   - [Belt] — kraftvolle Höhenlage
+   - [Hook] — eingängigste Zeile markieren
+   - [↑ Intensity] — steigende Energie
+   - [↓ Space] — deliberate ruhige Momente
+   - [Ad-lib] — spontane Vocals-Einwürfe (in runden Klammern nach dem Tag)
+   - [Call] / [Response] — Frage-Antwort-Dynamik
+5. Originaltext EXAKT — kein einziges Wort ändern oder umformulieren
+6. Reihenfolge und Absatzstruktur exakt beibehalten
+7. LEERE ZEILE zwischen jeder Song-Sektion — zwingend
+8. GESANGSDYNAMIK — ZWINGEND UMSETZEN:
+   - Satzzeichen strategisch für optimalen Stimmfluss und Atempausen einsetzen: Komma (,) = kurze Pause, Punkt (.) = vollständige Atempause.
+   - Ad-libs korrekt in runden Klammern abbilden: (yeah), (uh), (come on) — NIEMALS in eckigen Klammern.
+   - Nachdruck und emotionale Spitzen durch GROSSBUCHSTABEN und Ausrufezeichen markieren: z.B. "ich will MEHR!", "das BRENNT!"` ;
+
+  return `Du bist ein Experte für Suno AI ${sm} Annotated Lyrics.
+
+${langNote}
+
+${annotationRules}
+
+QUALITÄTS-PRINZIPIEN:
+- Annotations sollen die emotionale Tiefe und den Klangcharakter VERSTÄRKEN, nicht dekorieren
+- Line-Directives nur wo sie echten klanglichen Unterschied machen
+- Stacked Tags bei Höhepunkten maximieren den Suno-Output
+- Chorus/Hook immer mit Power-Tag versehen
+- Kein Tag-Overload: max. 1 Line-Directive pro 3 Zeilen im Verse
+
+Antworte NUR mit dem fertigen Annotated Lyrics Block. Keine Erklärungen, keine Kommentare.`;
+}
+
+function buildAnalysisSystemPrompt() {
+  return `Du analysierst einen Songtext für Suno AI-Optimierung.
+Antworte NUR mit einem validen JSON-Objekt. Kein Markdown, keine Backticks, kein Präfix, kein Suffix.
+Exakte JSON-Struktur:
+{
+  "sections": ["INTRO","VERSE 1","CHORUS","..."],
+  "detected_mood": ["tag1","tag2","tag3","tag4"],
+  "energy_flow": "Beschreibung des Energie-Bogens in 1-2 präzisen Sätzen",
+  "rhyme_scheme": "z.B. AABB, ABAB, alternierend, freestyle, mixed",
+  "dominant_theme": "Thema des Songs in max. 8 Wörtern",
+  "line_count": 24,
+  "language": "erkannte Sprache(n)",
+  "vocal_suggestion": "Konkreter Gesangsstil-Vorschlag passend zum Text",
+  "structure_quality": 85,
+  "suno_readiness": 78,
+  "suggestions": [
+    "Konkrete Verbesserungsempfehlung 1",
+    "Konkrete Verbesserungsempfehlung 2",
+    "Konkrete Verbesserungsempfehlung 3"
+  ]
+}`;
+}
+
+// ════════════════════════════════════════════
+// VALIDATION
+// ════════════════════════════════════════════
+function validateInput(rawText, meta) {
+  const lines   = rawText.split('\n').filter(l=>l.trim());
+  const words   = rawText.trim().split(/\s+/).filter(w=>w).length;
+  const hasTags = /\[(verse|chorus|bridge|hook|intro|outro|breakdown)/i.test(rawText);
+
+  const info = [
+    `📝 ${lines.length} Zeilen · ${words} Wörter · ${rawText.length} Zeichen`,
+    `🎵 Genre: ${meta.genre} | BPM: ${meta.bpm} | Suno: ${meta.sunoModel} | Provider: ${meta.provider}/${meta.model}`,
+  ];
+  if (meta.mood?.length)         info.push(`🎭 Mood: ${meta.mood.slice(0,5).join(', ')}${meta.mood.length>5?` +${meta.mood.length-5}`:''}`);
+  if (meta.instruments?.length)  info.push(`🎸 Instrumente: ${meta.instruments.length} ausgewählt`);
+  if (meta.artist)               info.push(`👤 Artist-DNA: ${meta.artist}`);
+  if (hasTags)                   info.push(`✅ Sektions-Tags erkannt`);
+
+  const issues = [];
+  if (lines.length < 4)         issues.push('⚠️ Sehr kurzer Text — weniger als 4 Zeilen');
+  if (rawText.length > 3500)    issues.push('⚠️ Text sehr lang (>3500 Zeichen) — Suno Lyrics-Limit beachten');
+  if (!meta.lang)               issues.push('💡 Gesangssprache auswählen für optimale Annotierung');
+  if (!meta.mood?.length)       issues.push('💡 Mood-Chips auswählen für präziseren Style Prompt');
+  if (!meta.instruments?.length)issues.push('💡 Instrumente auswählen verbessert den Style Prompt signifikant');
+  if (!meta.vocal)              issues.push('💡 Gesangsstil definieren für passgenaue Annotations');
+
+  return { info, issues, valid: lines.length >= 2 };
+}
+
+// ════════════════════════════════════════════
+// RENDER HELPERS
+// ════════════════════════════════════════════
+function renderValidation(info, issues) {
+  document.getElementById('validationOutput').innerHTML = `
+    <div class="alert alert-success">${info.map(i=>`<div>${i}</div>`).join('')}</div>
+    ${issues.map(w=>`<div class="alert alert-warning">${w}</div>`).join('')}
+  `;
+}
+
+function renderAnalysis(d) {
+  const q  = d.structure_quality || 0;
+  const sr = d.suno_readiness    || 0;
+  const qColor  = q  >= 80 ? 'var(--green)' : q  >= 60 ? 'var(--gold)' : 'var(--red)';
+  const srColor = sr >= 80 ? 'var(--green)' : sr >= 60 ? 'var(--gold)' : 'var(--red)';
+  document.getElementById('analysisOutput').innerHTML = `
+    <div class="a-card">
+      <div class="a-card-title">🏗️ Sektionen</div>
+      <div class="a-card-value">${(d.sections||[]).join(' → ')||'—'}</div>
+    </div>
+    <div class="a-card">
+      <div class="a-card-title">🎭 Mood (KI)</div>
+      <div class="a-card-value">${(d.detected_mood||[]).join(', ')||'—'}</div>
+    </div>
+    <div class="a-card">
+      <div class="a-card-title">💡 Dominantes Thema</div>
+      <div class="a-card-value">${d.dominant_theme||'—'}</div>
+    </div>
+    <div class="a-card">
+      <div class="a-card-title">⚡ Energie-Bogen</div>
+      <div class="a-card-value">${d.energy_flow||'—'}</div>
+    </div>
+    <div class="a-card">
+      <div class="a-card-title">🔤 Reimschema</div>
+      <div class="a-card-value">${d.rhyme_scheme||'—'}</div>
+    </div>
+    <div class="a-card">
+      <div class="a-card-title">🎤 Gesang-Empfehlung</div>
+      <div class="a-card-value" style="font-size:10px;">${d.vocal_suggestion||'—'}</div>
+    </div>
+    <div class="a-card">
+      <div class="a-card-title">🌐 Sprache</div>
+      <div class="a-card-value">${d.language||'—'}</div>
+    </div>
+    <div class="a-card">
+      <div class="a-card-title">📊 Struktur-Qualität</div>
+      <div class="a-card-value" style="color:${qColor};font-weight:700;">${q}/100</div>
+      <div class="quality-bar"><div class="quality-fill" style="width:${q}%;background:${qColor};"></div></div>
+    </div>
+    <div class="a-card">
+      <div class="a-card-title">🎵 Suno-Readiness</div>
+      <div class="a-card-value" style="color:${srColor};font-weight:700;">${sr}/100</div>
+      <div class="quality-bar"><div class="quality-fill" style="width:${sr}%;background:${srColor};"></div></div>
+    </div>
+    ${(d.suggestions||[]).length ? `
+    <div class="a-card a-suggestions">
+      <div class="a-card-title">💡 Optimierungsempfehlungen</div>
+      ${d.suggestions.map(s=>`<div class="suggestion-item">→ ${s}</div>`).join('')}
+    </div>` : ''}
+  `;
+  document.getElementById('cardAnalysis').style.display = 'block';
+  const prov = currentProvider;
+  const model = currentModels[prov];
+  document.getElementById('analysisBadge').textContent = `${prov} / ${model}`;
+}
+
+function renderStylePrompt(text) {
+  document.getElementById('cardStyle').style.display = 'block';
+  document.getElementById('styleOutput').textContent = text;
+  const n = text.length;
+  const limit = document.getElementById('sunoModel').value === 'v4.5' ? 900 : 850;
+  const ind = document.getElementById('styleCharIndicator');
+  ind.textContent = `${n} / ${limit} Zeichen ${n <= limit ? '✓' : '⚠️ Limit überschritten!'}`;
+  ind.className = 'char-indicator ' + (n <= limit ? (n <= limit*0.85 ? 'ok' : 'warn') : 'over');
+  document.getElementById('sunoModelBadge').textContent = document.getElementById('sunoModel').value;
+  document.getElementById('btnCopyStyle').onclick = () => copyToClipboard(text,'btnCopyStyle');
+}
+
+function renderLyrics(text) {
+  document.getElementById('cardLyrics').style.display = 'block';
+  document.getElementById('lyricsModelBadge').textContent = document.getElementById('sunoModel').value;
+  const el = document.getElementById('lyricsOutput');
+  let h = text
+    .replace(/(\[Header:[^\]]+\])/g,         '<span style="color:#f0abfc;font-weight:bold;font-size:11px;">$1</span>')
+    .replace(/(\[↑[^\]]+\]|\[↓[^\]]+\])/g,  '<span style="color:#fb923c;font-style:italic;">$1</span>')
+    .replace(/(\[CHORUS[^\]]*\]|\[Chorus[^\]]*\])/g, '<span style="color:#fbbf24;font-weight:bold;">$1</span>')
+    .replace(/(\[VERSE[^\]]*\]|\[Verse[^\]]*\])/g,   '<span style="color:#86efac;font-weight:bold;">$1</span>')
+    .replace(/(\[BRIDGE[^\]]*\]|\[Bridge[^\]]*\])/g, '<span style="color:#93c5fd;font-weight:bold;">$1</span>')
+    .replace(/(\[OUTRO[^\]]*\]|\[Outro[^\]]*\])/g,   '<span style="color:#c4b5fd;font-weight:bold;">$1</span>')
+    .replace(/(\[[^\]]+\])/g,                '<span style="color:#fbbf24;font-weight:bold;">$1</span>')
+    .replace(/(\([^)]+\))/g,                 '<span style="color:#9ca3af;font-style:italic;">$1</span>');
+  el.innerHTML = h;
+  document.getElementById('btnCopyLyrics').onclick = () => copyToClipboard(text,'btnCopyLyrics');
+}
+
+// ════════════════════════════════════════════
+// HISTORY
+// ════════════════════════════════════════════
+function saveToHistory(styleOut, lyricsOut, meta) {
+  try {
+    const hist = JSON.parse(localStorage.getItem('sunoHistory_v7')||'[]');
+    hist.unshift({
+      id: Date.now(), date: new Date().toLocaleString('de-DE'),
+      genre: meta.genre, mood: meta.mood?.slice(0,3).join(', '),
+      bpm: meta.bpm, key: meta.key, sunoModel: meta.sunoModel,
+      provider: meta.provider, stylePrompt: styleOut, lyrics: lyricsOut,
+      preview: styleOut.substring(0,90)+'…'
+    });
+    localStorage.setItem('sunoHistory_v7', JSON.stringify(hist.slice(0,15)));
+  } catch(e){}
+}
+function toggleHistory() {
+  const c = document.getElementById('cardHistory');
+  if (c.style.display==='none') { renderHistory(); c.style.display='block'; }
+  else c.style.display='none';
+}
+function renderHistory() {
+  const hist = JSON.parse(localStorage.getItem('sunoHistory_v7')||'[]');
+  const c = document.getElementById('historyOutput');
+  if (!hist.length) { c.innerHTML='<div style="color:var(--muted);font-family:JetBrains Mono,monospace;font-size:11px;">Noch keine Einträge.</div>'; return; }
+  c.innerHTML = hist.map(h=>`
+    <div class="history-item" onclick="loadFromHistory(${h.id})">
+      <div class="history-meta">${h.date} · ${h.genre||'—'} · ${h.sunoModel||'v5.5'} · BPM ${h.bpm||'—'} · ${h.provider||'—'}</div>
+      <div class="history-preview">${h.preview}</div>
+    </div>
+  `).join('');
+}
+function loadFromHistory(id) {
+  const hist = JSON.parse(localStorage.getItem('sunoHistory_v7')||'[]');
+  const e = hist.find(h=>h.id===id); if (!e) return;
+  renderStylePrompt(e.stylePrompt); renderLyrics(e.lyrics);
+  document.getElementById('cardHistory').style.display='none';
+  document.getElementById('section-results').style.display='block';
+}
+
+// ════════════════════════════════════════════
+// EXPORT
+// ════════════════════════════════════════════
+function exportSession() {
+  if (!lastStylePrompt) return alert('Erst Protokoll starten.');
+  const data = { version:'v7.1', timestamp: new Date().toISOString(), meta: lastMeta, stylePrompt: lastStylePrompt, lyrics: lastLyrics };
+  const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = `suno_protokoll_${Date.now()}.json`; a.click();
+}
+
+// ════════════════════════════════════════════
+// COPY
+// ════════════════════════════════════════════
+function copyToClipboard(text, buttonId) {
+  const btn = document.getElementById(buttonId);
+  const orig = btn.innerHTML;
+  const ok = () => { btn.innerHTML='✓ Kopiert!'; btn.classList.add('copied'); setTimeout(()=>{btn.innerHTML=orig;btn.classList.remove('copied')},2200); };
+  if (navigator.clipboard?.writeText) { navigator.clipboard.writeText(text).then(ok).catch(()=>fallbackCopy(text,ok)); }
+  else fallbackCopy(text,ok);
+}
+function fallbackCopy(text,cb) {
+  const ta=document.createElement('textarea'); ta.value=text; ta.style.cssText='position:fixed;left:-9999px';
+  document.body.appendChild(ta); ta.select();
+  try{document.execCommand('copy');cb();}catch{alert('Strg+C zum Kopieren');}
+  document.body.removeChild(ta);
+}
+
+// ════════════════════════════════════════════
+// STEP BAR
+// ════════════════════════════════════════════
+function setStep(n) {
+  for (let i=1;i<=5;i++){
+    const el=document.getElementById('stepBar'+i);
+    el.classList.remove('active','done');
+    if (i<n) el.classList.add('done'); else if(i===n) el.classList.add('active');
+  }
+}
+
+// ════════════════════════════════════════════
+// RESET
+// ════════════════════════════════════════════
+function resetAll() {
+  document.getElementById('section-results').style.display='none';
+  document.getElementById('rawText').value='';
+  document.getElementById('metaMoodCustom').value='';
+  updateCharCounter(); setStep(1);
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+// ════════════════════════════════════════════
+// MAIN PROTOKOLL — 4-PHASEN FLOW
+// ════════════════════════════════════════════
+async function runProtokoll() {
+  const rawText = document.getElementById('rawText').value.trim();
+  if (!rawText) return alert('Bitte Songtext eingeben.');
+  const key = document.getElementById('key-' + currentProvider).value.trim();
+  if (!key) return alert(`Bitte ${currentProvider} API Key eingeben.`);
+
+  const meta = buildMetaObject();
+  lastMeta   = meta;
+  const validation = validateInput(rawText, meta);
+  if (!validation.valid) return alert('Mindestens 2 Textzeilen eingeben.');
+
+  const overlay = document.getElementById('loadingOverlay');
+  const status  = document.getElementById('loadingStatus');
+  overlay.classList.add('show');
+  document.getElementById('section-results').style.display='none';
+
+  try {
+    const userInput = `ROHTEXT:\n${rawText}\n\nMETADATEN:\n${JSON.stringify(meta,null,2)}`;
+
+    // Phase 1: Validierung
+    setStep(2);
+    renderValidation(validation.info, validation.issues);
+    await sleep(200);
+
+    // Phase 2: KI-Analyse — nativer JSON-Modus (response_format / responseMimeType)
+    setStep(3);
+    status.textContent = 'Phase 2: Analysiere Textstruktur & Mood…';
+    let analysisData = null;
+    try {
+      const raw = await callAI(buildAnalysisSystemPrompt(), `ROHTEXT:\n${rawText}`, 0.2, true);
+      // Claude hat keinen nativen JSON-Modus → Cleanup-Fallback; für Gemini/OpenAI ist der Output bereits valides JSON
+      const clean = raw.replace(/```json|```/g,'').replace(/^[^{]*/,'').replace(/[^}]*$/,'').trim();
+      analysisData = JSON.parse(clean);
+      renderAnalysis(analysisData);
+    } catch(e) {
+      console.warn('Analyse fehlgeschlagen:', e);
+      document.getElementById('cardAnalysis').style.display='block';
+      document.getElementById('analysisOutput').innerHTML='<div class="alert alert-warning">⚠️ Analyse fehlgeschlagen — Protokoll wird fortgesetzt.</div>';
+    }
+
+    // Phase 3: Style Prompt
+    setStep(4);
+    status.textContent = 'Phase 3: Generiere Style Prompt…';
+    const analysisCtx = analysisData ? `\n\nKI-ANALYSE:\n${JSON.stringify(analysisData,null,2)}` : '';
+    const styleRaw = await callAI(buildStyleSystemPrompt(meta), userInput + analysisCtx);
+    // Interpunktion: Style-Fenster muss mit Punkt enden (Req. 7)
+    const styleOut = styleRaw.trimEnd().replace(/[,;:\s]+$/, '') + '.';
+    lastStylePrompt = styleOut;
+    renderStylePrompt(styleOut);
+
+    // Phase 4: Annotated Lyrics
+    setStep(5);
+    status.textContent = 'Phase 4: Annotiere Lyrics…';
+    const lyricsOut = await callAI(buildLyricsSystemPrompt(meta), userInput + `\n\nSTYLE PROMPT:\n${styleOut}` + analysisCtx);
+    lastLyrics = lyricsOut;
+    renderLyrics(lyricsOut);
+
+    saveToHistory(styleOut, lyricsOut, meta);
+    document.getElementById('section-results').style.display='block';
+    setTimeout(()=>document.getElementById('section-results').scrollIntoView({behavior:'smooth',block:'start'}),100);
+
+  } catch(e) {
+    console.error(e);
+    alert(`Fehler: ${e.message}\n\nAPI-Key und Netzwerkverbindung prüfen.`);
+  } finally {
+    overlay.classList.remove('show');
+  }
+}
+
+function sleep(ms) { return new Promise(r=>setTimeout(r,ms)); }
+
+// Init
+setStep(1);
+</script>
+</body>
+</html>
