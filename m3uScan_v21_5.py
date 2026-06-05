@@ -1,5 +1,5 @@
 """
-Xtream DE Scanner v21.4 | Author: TheGermanGuy™
+Xtream DE Scanner v21.5 (Pydroid 3 Optimized) | Author: TheGermanGuy™
 =======================
 Erfordert: pip install aiohttp tqdm   |   Python 3.7+  (empf. 3.10+)
 
