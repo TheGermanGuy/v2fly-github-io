@@ -4233,8 +4233,8 @@ class LinkLedger:
         return len(unique)
 
 
-async def _check_link_status(url: str) -> dict:
-    """Kurzcheck: Fragt server_info für einen Link ab (async)"""
+def _check_link_status(url: str) -> dict:
+    """Kurzcheck: Fragt server_info für einen Link ab (synchron, urllib)"""
     try:
         qs = parse_qs(urlparse(url).query)
         u = qs.get("username", [None])[0]
@@ -4247,11 +4247,18 @@ async def _check_link_status(url: str) -> dict:
 
         api_url = f"{host}/player_api.php?username={u}&password={pw}"
 
-        async with aiohttp.ClientSession() as session:
-            async with session.get(api_url, timeout=aiohttp.ClientTimeout(total=5), ssl=False) as resp:
-                if resp.status != 200:
-                    return {"error": f"HTTP {resp.status}"}
-                data = await resp.json()
+        try:
+            import urllib.request
+            import ssl
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+
+            req = urllib.request.Request(api_url, headers={
+                'User-Agent': 'Mozilla/5.0 (Android; Linux) Chrome/136'
+            })
+            with urllib.request.urlopen(req, context=ctx, timeout=5) as resp:
+                data = json.loads(resp.read().decode('utf-8'))
                 user_info = data.get("user_info", {})
 
                 exp_ts = user_info.get("exp_date")
@@ -4271,6 +4278,10 @@ async def _check_link_status(url: str) -> dict:
                     "active_con": int(user_info.get("active_cons", 0)),
                     "status": user_info.get("status", "unknown"),
                 }
+        except urllib.error.HTTPError as e:
+            return {"error": f"HTTP {e.code}"}
+        except urllib.error.URLError as e:
+            return {"error": f"Verbindung: {str(e.reason)[:30]}"}
     except Exception as e:
         return {"error": str(e)[:50]}
 
@@ -4320,7 +4331,7 @@ def _run_link_management(ledger: LinkLedger, env: EnvInfo):
             print()
             for idx, u in enumerate(urls, 1):
                 try:
-                    result = asyncio.run(_check_link_status(u))
+                    result = _check_link_status(u)
                     if "success" in result:
                         ledger_count = ledger.get_unique_users(u)
                         warn = ""
