@@ -2935,7 +2935,8 @@ def _main_menu(env: EnvInfo) -> str:
     d = C.YELLOW if lk_ok else C.GRAY
     s = C.CYAN   if lk_ok else C.GRAY
     e = C.GREEN  if lk_ok else C.GRAY
-    print(f"  {_t('D','Bereinigen',d)}  {_t('S','Sortieren',s)}  {_t('E','Exportieren',e)}")
+    v = C.PURPLE if lk_ok else C.GRAY
+    print(f"  {_t('D','Bereinigen',d)}  {_t('S','Sortieren',s)}  {_t('E','Exportieren',e)}  {_t('V','Verwaltung',v)}")
 
     print(_menu_divider())
 
@@ -2946,7 +2947,7 @@ def _main_menu(env: EnvInfo) -> str:
 
     print(f"  {_t('H','Hilfe',C.GRAY)}  {_t('Q','Beenden',C.GRAY)}")
 
-    valid = ["A","1","2","3","4","5","D","S","E","H","Q"]
+    valid = ["A","1","2","3","4","5","D","S","E","V","H","Q"]
     if env.has_checkpoint:
         valid.append("R")
     return _prompt("Auswahl", valid, "A")
@@ -3750,6 +3751,12 @@ def run_menu() -> ScanConfig:
             env = EnvInfo().detect()
             continue
 
+        if choice == "V":
+            ledger = LinkLedger()
+            _run_link_management(ledger, env)
+            env = EnvInfo().detect()
+            continue
+
         # Preset anwenden
         if choice == "A":
             _auto_configure(env, cfg)
@@ -4141,6 +4148,237 @@ async def _async_main():
             _run_sort(_sort_env)
 
     print()
+
+
+# ==============================================================
+# LINK-VERWALTUNG MIT ZUWEISUNGS-LEDGER (v21.5 NEU)
+# ==============================================================
+LEDGER_FILE = "link_ledger.json"  # Speichert user:pass → Zuweisungen
+
+class LinkLedger:
+    """Verwaltet Zuweisungen: url → [(person, date_assigned), ...]"""
+    def __init__(self):
+        self.data = {}
+        self.load()
+
+    def load(self):
+        """Lädt Ledger aus Datei (oder legt leer an)"""
+        if os.path.exists(LEDGER_FILE):
+            try:
+                with open(LEDGER_FILE, "r", encoding="utf-8") as f:
+                    self.data = json.load(f)
+            except Exception:
+                self.data = {}
+        else:
+            self.data = {}
+
+    def save(self):
+        """Speichert Ledger"""
+        try:
+            with open(LEDGER_FILE, "w", encoding="utf-8") as f:
+                json.dump(self.data, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            print(c(C.RED, f"  ✗ Fehler beim Speichern des Ledgers: {e}"))
+
+    def get_key(self, url: str) -> str:
+        """Extrahiert username:password aus URL als Key"""
+        try:
+            qs = parse_qs(urlparse(url).query)
+            u = qs.get("username", [None])[0]
+            pw = qs.get("password", [None])[0]
+            if u and pw:
+                return f"{u}:{pw}"
+        except Exception:
+            pass
+        return None
+
+    def assign(self, url: str, person: str) -> bool:
+        """Weist Link einer Person zu"""
+        key = self.get_key(url)
+        if not key:
+            return False
+        if key not in self.data:
+            self.data[key] = []
+        self.data[key].append({
+            "person": person,
+            "date": datetime.now().isoformat()
+        })
+        self.save()
+        return True
+
+    def unassign(self, url: str, person: str) -> bool:
+        """Entfernt eine Person von Link"""
+        key = self.get_key(url)
+        if not key or key not in self.data:
+            return False
+        self.data[key] = [a for a in self.data[key] if a["person"].lower() != person.lower()]
+        if not self.data[key]:
+            del self.data[key]
+        self.save()
+        return True
+
+    def get_assignments(self, url: str) -> list:
+        """Gibt alle Zuweisungen für einen Link"""
+        key = self.get_key(url)
+        if not key or key not in self.data:
+            return []
+        return self.data[key]
+
+    def get_unique_users(self, url: str) -> int:
+        """Zählt eindeutige Personen, die diesen Link nutzen"""
+        key = self.get_key(url)
+        if not key or key not in self.data:
+            return 0
+        unique = set(a["person"].lower() for a in self.data[key])
+        return len(unique)
+
+
+async def _check_link_status(url: str) -> dict:
+    """Kurzcheck: Fragt server_info für einen Link ab (async)"""
+    try:
+        qs = parse_qs(urlparse(url).query)
+        u = qs.get("username", [None])[0]
+        pw = qs.get("password", [None])[0]
+        parsed = urlparse(url)
+        host = f"{parsed.scheme}://{parsed.netloc}"
+
+        if not u or not pw or not host:
+            return {"error": "URL ungültig"}
+
+        api_url = f"{host}/player_api.php?username={u}&password={pw}"
+
+        async with aiohttp.ClientSession() as session:
+            async with session.get(api_url, timeout=aiohttp.ClientTimeout(total=5), ssl=False) as resp:
+                if resp.status != 200:
+                    return {"error": f"HTTP {resp.status}"}
+                data = await resp.json()
+                user_info = data.get("user_info", {})
+
+                exp_ts = user_info.get("exp_date")
+                if exp_ts:
+                    try:
+                        exp_date = datetime.fromtimestamp(int(exp_ts))
+                        exp_str = exp_date.strftime("%d.%m.%Y")
+                    except Exception:
+                        exp_str = "unbekannt"
+                else:
+                    exp_str = "unbegrenzt"
+
+                return {
+                    "success": True,
+                    "exp": exp_str,
+                    "max_con": int(user_info.get("max_connections", 0)),
+                    "active_con": int(user_info.get("active_cons", 0)),
+                    "status": user_info.get("status", "unknown"),
+                }
+    except Exception as e:
+        return {"error": str(e)[:50]}
+
+
+def _run_link_management(ledger: LinkLedger, env: EnvInfo):
+    """[V] Link-Verwaltung mit Ledger"""
+    while True:
+        _cls()
+        _section("LINK-VERWALTUNG (Status + Zuweisungen)")
+
+        # ── Menü ──
+        print()
+        print(c(C.CYAN, "  [1] Link-Status abfragen (Ein-Klick)"))
+        print(c(C.CYAN, "  [2] Link einer Person zuweisen"))
+        print(c(C.CYAN, "  [3] Link von Person entfernen"))
+        print(c(C.CYAN, "  [4] Alle Zuweisungen anzeigen"))
+        print(c(C.DIM,  "  [Z] Zurück"))
+        print()
+
+        choice = input(c(C.WHITE, "  Wahl: ")).strip().upper()
+
+        if choice == "Z":
+            break
+
+        elif choice == "1":
+            # Status abfragen
+            _cls()
+            _section("STATUS ABFRAGEN")
+            print()
+            url = input(c(C.CYAN, "  Link paste oder [A] alle aus Datei:\n  → ")).strip()
+
+            if url.upper() == "A":
+                urls = []
+                for fname in [OUTPUT_FILE, TVONLY_FILE, VPN_FILE]:
+                    if os.path.exists(fname):
+                        with open(fname, "r", encoding="utf-8") as f:
+                            urls.extend(l.strip() for l in f if l.strip())
+                print(f"\n  {len(urls)} Links gefunden.")
+            else:
+                urls = [url] if url else []
+
+            if not urls:
+                print(c(C.RED, "\n  ✗ Keine Links gefunden."))
+                input(c(C.DIM, "\n  [ENTER]..."))
+                continue
+
+            print()
+            for idx, u in enumerate(urls, 1):
+                try:
+                    result = asyncio.run(_check_link_status(u))
+                    if "success" in result:
+                        ledger_count = ledger.get_unique_users(u)
+                        warn = ""
+                        if result["max_con"] > 0 and result["active_con"] >= result["max_con"]:
+                            warn = c(C.RED, " ⚠️  MAX ERREICHT!")
+                        print(f"  {idx}. {c(C.GREEN, '✓')} Ablauf: {result['exp']} | "
+                              f"Max: {result['max_con']} | Aktiv: {result['active_con']}{warn}")
+                        if ledger_count > 0:
+                            print(f"     → Zugewiesen an {ledger_count} Person(en)")
+                    else:
+                        print(f"  {idx}. {c(C.RED, '✗')} {result.get('error', 'Fehler')}")
+                except Exception as e:
+                    print(f"  {idx}. {c(C.RED, '✗')} Exception: {str(e)[:40]}")
+
+            input(c(C.DIM, "\n  [ENTER]..."))
+
+        elif choice == "2":
+            # Zuweisen
+            _cls()
+            _section("LINK ZUWEISEN")
+            print()
+            url = input(c(C.CYAN, "  Link: ")).strip()
+            person = input(c(C.CYAN, "  Person: ")).strip()
+
+            if ledger.assign(url, person):
+                print(c(C.GREEN, f"\n  ✓ {person} zugewiesen."))
+            else:
+                print(c(C.RED, "  ✗ Fehler beim Zuweisen."))
+            input(c(C.DIM, "\n  [ENTER]..."))
+
+        elif choice == "3":
+            # Entfernen
+            _cls()
+            _section("ZUWEISUNNG ENTFERNEN")
+            print()
+            url = input(c(C.CYAN, "  Link: ")).strip()
+            person = input(c(C.CYAN, "  Person: ")).strip()
+
+            if ledger.unassign(url, person):
+                print(c(C.GREEN, f"\n  ✓ {person} entfernt."))
+            else:
+                print(c(C.RED, "  ✗ Nicht gefunden."))
+            input(c(C.DIM, "\n  [ENTER]..."))
+
+        elif choice == "4":
+            # Alle anzeigen
+            _cls()
+            _section("ALLE ZUWEISUNGEN")
+            print()
+
+            if not ledger.data:
+                print(c(C.DIM, "  Keine Zuweisungen vorhanden."))
+            else:
+                for key, assignments in ledger.data.items():
+                    persons = ", ".join(a["person"] for a in assignments)
+                    print(f"  {c(C.GREEN, key):40} → {persons}")
+
+            input(c(C.DIM, "\n  [ENTER]..."))
 
 
 if __name__ == "__main__":
