@@ -4153,7 +4153,51 @@ async def _async_main():
 # ==============================================================
 # LINK-VERWALTUNG MIT ZUWEISUNGS-LEDGER (v21.5 NEU)
 # ==============================================================
+# LINK-VERWALTUNG MIT ZUWEISUNGS-LEDGER (v21.5 NEU)
+# ==============================================================
 LEDGER_FILE = "link_ledger.json"  # Speichert user:pass → Zuweisungen
+
+def _extract_xtream_links(text: str) -> list:
+    """
+    Extrahiert alle gültigen Xtream-Links aus beliebigem Text.
+    Ignoriert Zeilenumbrüche, Spaces, und andere Inhalte.
+    Nutzt Regex um Links mit player_api.php oder get.php zu finden.
+    """
+    if not text or not isinstance(text, str):
+        return []
+
+    # Regex für Xtream-Links: http(s)://host:port/... mit username+password
+    pattern = r'https?://[^\s]+(?:player_api\.php|get\.php)[^\s]*[?&]username=[^&\s]+[&]password=[^&\s]+'
+
+    matches = re.findall(pattern, text, re.IGNORECASE)
+
+    # Dedupliziere (falls jemand mehrmals denselben Link pastet)
+    unique_links = list(dict.fromkeys(matches))
+
+    return unique_links
+
+
+def _input_multi_links(prompt: str = "Links paste (mehrere ok) oder [A] alle aus Datei") -> list:
+    """
+    Interaktive Eingabe für mehrere Links.
+    - [A] = alle aus free_links.txt, free_links_TVonly.txt, vpn_links.txt
+    - Beliebiger Text = extrahiert automatisch Xtream-Links
+    """
+    print()
+    user_input = input(c(C.CYAN, f"  {prompt}:\n  → ")).strip()
+
+    if user_input.upper() == "A":
+        urls = []
+        for fname in [OUTPUT_FILE, TVONLY_FILE, VPN_FILE]:
+            if os.path.exists(fname):
+                with open(fname, "r", encoding="utf-8") as f:
+                    urls.extend(l.strip() for l in f if l.strip())
+        return urls
+    else:
+        # Extrahiere Links aus beliebigem Input
+        extracted = _extract_xtream_links(user_input)
+        return extracted
+
 
 class LinkLedger:
     """Verwaltet Zuweisungen: url → [(person, date_assigned), ...]"""
@@ -4286,49 +4330,8 @@ def _check_link_status(url: str) -> dict:
         return {"error": str(e)[:50]}
 
 
-def _extract_xtream_links(text: str) -> list:
-    """
-    Extrahiert alle gültigen Xtream-Links aus beliebigem Text.
-    Ignoriert Zeilenumbrüche, Spaces, und andere Inhalte.
-    Nutzt Regex um Links mit player_api.php oder get.php zu finden.
-    """
-    if not text or not isinstance(text, str):
-        return []
-
-    # Regex für Xtream-Links: http(s)://host:port/... mit username+password
-    pattern = r'https?://[^\s]+(?:player_api\.php|get\.php)[^\s]*[?&]username=[^&\s]+[&]password=[^&\s]+'
-
-    matches = re.findall(pattern, text, re.IGNORECASE)
-
-    # Dedupliziere (falls jemand mehrmals denselben Link pastet)
-    unique_links = list(dict.fromkeys(matches))
-
-    return unique_links
-
-
-def _input_multi_links(prompt: str = "Links paste (mehrere ok) oder [A] alle aus Datei") -> list:
-    """
-    Interaktive Eingabe für mehrere Links.
-    - [A] = alle aus free_links.txt, free_links_TVonly.txt, vpn_links.txt
-    - Beliebiger Text = extrahiert automatisch Xtream-Links
-    """
-    print()
-    user_input = input(c(C.CYAN, f"  {prompt}:\n  → ")).strip()
-
-    if user_input.upper() == "A":
-        urls = []
-        for fname in [OUTPUT_FILE, TVONLY_FILE, VPN_FILE]:
-            if os.path.exists(fname):
-                with open(fname, "r", encoding="utf-8") as f:
-                    urls.extend(l.strip() for l in f if l.strip())
-        return urls
-    else:
-        # Extrahiere Links aus beliebigem Input
-        extracted = _extract_xtream_links(user_input)
-        return extracted
-
-
-
+def _run_link_management(ledger: LinkLedger, env: EnvInfo):
+    """[V] Link-Verwaltung mit Ledger"""
     while True:
         _cls()
         _section("LINK-VERWALTUNG (Status + Zuweisungen)")
