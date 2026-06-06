@@ -1489,6 +1489,21 @@ class C:
 def c(color, text):
     return f"{color}{text}{C.RESET}"
 
+# ──────────────────────────────────────────────────────────────
+# RAHMEN-ZEICHEN — gerundete Unicode-Box, ASCII-Fallback
+# ──────────────────────────────────────────────────────────────
+_UTF8 = (sys.stdout.encoding or "").lower().startswith("utf")
+if _UTF8:
+    BX = {"tl": "╭", "tr": "╮", "bl": "╰", "br": "╯",
+          "h": "─", "v": "│", "ml": "├", "mr": "┤", "sep": "·",
+          "ok": "●", "warn": "▲", "err": "✕", "time": "⧗",
+          "rate": "◓", "special": "◆", "arrow": "▸"}
+else:
+    BX = {"tl": "+", "tr": "+", "bl": "+", "br": "+",
+          "h": "-", "v": "|", "ml": "+", "mr": "+", "sep": ".",
+          "ok": "*", "warn": "!", "err": "x", "time": "~",
+          "rate": "o", "special": "*", "arrow": ">"}
+
 # ══════════════════════════════════════════════════════════════════════════════
 # ADAPTIVE TERMINAL WIDTH DETECTION (v21.5)
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1518,11 +1533,11 @@ def _sep(char="-"):
 
 def _hdr(title: str) -> str:
     inner = f" {title} ".center(W_ACTUAL - 2)
-    top   = c(C.CYAN + C.BOLD, "+" + "-" * (W_ACTUAL - 2) + "+")
-    mid   = (c(C.CYAN + C.BOLD, "|") +
+    top   = c(C.CYAN + C.BOLD, BX["tl"] + BX["h"] * (W_ACTUAL - 2) + BX["tr"])
+    mid   = (c(C.CYAN + C.BOLD, BX["v"]) +
              c(C.WHITE + C.BOLD, inner) +
-             c(C.CYAN + C.BOLD, "|"))
-    bot   = c(C.CYAN + C.BOLD, "+" + "-" * (W_ACTUAL - 2) + "+")
+             c(C.CYAN + C.BOLD, BX["v"]))
+    bot   = c(C.CYAN + C.BOLD, BX["bl"] + BX["h"] * (W_ACTUAL - 2) + BX["br"])
     return f"{top}\n{mid}\n{bot}"
 
 def _shorten(s: str, n: int) -> str:
@@ -2796,16 +2811,16 @@ def _cls():
 def _box_line(text: str, col: str = "") -> str:
     """Zentrierte Box-Zeile passend zu W."""
     inner  = text.center(W - 4)
-    border = c(C.CYAN + C.BOLD, "|")
+    border = c(C.CYAN + C.BOLD, BX["v"])
     return f"{border} {col}{inner}\033[0m {border}"
 
 def _box(lines: list, title: str = ""):
-    top = c(C.CYAN + C.BOLD, "+" + "=" * (W - 2) + "+")
-    bot = c(C.CYAN + C.BOLD, "+" + "=" * (W - 2) + "+")
+    top = c(C.CYAN + C.BOLD, BX["tl"] + BX["h"] * (W - 2) + BX["tr"])
+    bot = c(C.CYAN + C.BOLD, BX["bl"] + BX["h"] * (W - 2) + BX["br"])
     print(top)
     if title:
         print(_box_line(title, C.WHITE + C.BOLD))
-        print(c(C.CYAN + C.BOLD, "|" + "-" * (W - 2) + "|"))
+        print(c(C.CYAN + C.BOLD, BX["ml"] + BX["h"] * (W - 2) + BX["mr"]))
     for line in lines:
         print(line)
     print(bot)
@@ -2817,7 +2832,7 @@ def _row(label: str, value: str, col_val: str = C.WHITE,
     label und value müssen PLAIN TEXT sein (kein ANSI).
     Padding wird VOR dem Einfärben angewendet → kein Drift.
     """
-    border  = c(C.CYAN + C.BOLD, "|")
+    border  = c(C.CYAN + C.BOLD, BX["v"])
     lbl_pad = f"  {label:<{lbl_w}}"   # 2 Einrückung + Label auf lbl_w auffüllen
     val_str = f"{value}"
     # Restbreite für Wert: W - 1(|) - (2+lbl_w) - 2(gap) - 1(|)
@@ -2900,14 +2915,14 @@ def _show_welcome(env: EnvInfo):
     iw = W - 2   # innere Breite = 62 Zeichen
 
     # ── Title Box ─────────────────────────────────────────────
-    bdr  = c(C.CYAN + C.BOLD, "|")
-    line = c(C.CYAN + C.BOLD, "+" + "=" * iw + "+")
+    bdr  = c(C.CYAN + C.BOLD, BX["v"])
+    line = c(C.CYAN + C.BOLD, BX["tl"] + BX["h"] * iw + BX["tr"])
     print(line)
     print(bdr + c(C.WHITE + C.BOLD,
                   "  XTREAM DE SCANNER".center(iw)) + bdr)
     print(bdr + c(C.DIM,
                   "v21.4  •  Pydroid3 Edition  •  Mai 2026".center(iw)) + bdr)
-    print(c(C.CYAN + C.BOLD, "+" + "-" * iw + "+"))
+    print(c(C.CYAN + C.BOLD, BX["ml"] + BX["h"] * iw + BX["mr"]))
 
     # ── Datei-Aufschlüsselung ─────────────────────────────────
     # Schema: | ●  Label           NNNN Links |
@@ -2943,7 +2958,7 @@ def _show_welcome(env: EnvInfo):
 
     # Gesamt
     if env.known_links > 0:
-        print(c(C.CYAN + C.BOLD, "|" + "·" * iw + "|"))
+        print(c(C.CYAN + C.BOLD, BX["v"] + BX["sep"] * iw + BX["v"]))
         gs  = f"{'Gesamt:':<{LBL_W}}"
         gv  = f"{env.known_links:>{VAL_W-5}} Links"
         rest = iw - 1 - 2 - LBL_W - 2 - VAL_W
@@ -2952,7 +2967,7 @@ def _show_welcome(env: EnvInfo):
 
     # CF + Checkpoint
     if env.cf_hosts > 0 or env.has_checkpoint:
-        print(c(C.CYAN + C.BOLD, "|" + "·" * iw + "|"))
+        print(c(C.CYAN + C.BOLD, BX["v"] + BX["sep"] * iw + BX["v"]))
         if env.cf_hosts > 0:
             cf_lbl = f"{'CF-Hosts:':<{LBL_W}}"
             cf_val = f"{env.cf_hosts} bekannte CF-Hosts"
@@ -2968,7 +2983,7 @@ def _show_welcome(env: EnvInfo):
                       f"  {c(C.YELLOW, cp_val)}{' ' * max(rest, 0)}")
             print(bdr + row + bdr)
 
-    print(c(C.CYAN + C.BOLD, "+" + "=" * iw + "+"))
+    print(c(C.CYAN + C.BOLD, BX["bl"] + BX["h"] * iw + BX["br"]))
 
 
 # ==============================================================
