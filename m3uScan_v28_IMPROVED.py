@@ -18,8 +18,8 @@ Erfordert: pip install aiohttp tqdm   |   Python 3.7+  (empf. 3.10+)
 ════════════════════════════════════════════════════════
   [A] Auto       Adaptive Workers, optimale Einstellungen automatisch
   [1] Schnell    Kein VPN/Stream-Check, exp_min=3d, max. Geschwindigkeit
-  [2] Normal     VPN detection aktiv, exp_min=7d – empfohlener Standard
-  [3] Gründlich  VPN + 512-Byte Stream sampling, exp_min=7d
+  [2] Normal     VPN-Prüfung aktiv, exp_min=7d – empfohlener Standard
+  [3] Gründlich  VPN + 512-Byte Stream-Stichprobe, exp_min=7d
   [4] CF-Debug   Nur cf_hosts.json, alle Filter aus, cf_retries=0
   [5] Manuell    100% manuelle Konfiguration, kein Auto-Eingriff
   [R] Resume     Unterbrochenen Scan aus Checkpoint fortsetzen
@@ -86,10 +86,10 @@ Erfordert: pip install aiohttp tqdm   |   Python 3.7+  (empf. 3.10+)
  TERMINAL-AUSGABE
 ════════════════════════════════════════════════════════
   Pro Treffer eine Zeile:
-    ✓ [200 OK] | host:port | user | 2/5 | 45T 3h | [ LABEL ]
-  HTTP-Status-Icons: ✓ OK  ✗ Fehler  ⊙ RateLimit  ⚠ CF  ⧖ Timeout
+    ● [200 OK] | host:port | user | 2/5 | 45T 3h | [ LABEL ]
+  HTTP-Status-Icons: ● OK  ✕ Fehler  ◓ RateLimit  ▲ CF  ⧗ Timeout
   Restlaufzeit: calculate_time_left() → "45T 3h" / "ABGELAUFEN"
-  Live-Fortschritt: DE=12 VPN=3 CF=8 ⧖=31 im tqdm-Postfix
+  Live-Fortschritt: DE=12 VPN=3 CF=8 ⧗=31 im tqdm-Postfix
   Welcome-Screen: Aufschlüsselung aller Ausgabedateien mit Zeilenanzahl.
   STRG+C: Checkpoint gespeichert → [R] zum Fortfahren.
 
@@ -100,7 +100,7 @@ Erfordert: pip install aiohttp tqdm   |   Python 3.7+  (empf. 3.10+)
   Kein ts/m3u8 in output_formats       → verworfen
   Ablauf < EXP_MIN_DAYS (7d)           → verworfen
   Ablauf 3–7d                          → expiring_links.txt
-  Stream sampling (512 Byte)         → Modus 3 / Gründlich
+  Stream-Stichprobe (512 Byte)         → Modus 3 / Gründlich
   VPN-Erkennung (Geo-Block-Probe)      → vpn_links.txt
   Umlaut-Normalisierung                → ä→ae ö→oe ü→ue ß→ss
   Panel-Typ-Erkennung                  → XUI / XC / Clone / StreamCreed
@@ -160,11 +160,11 @@ VPN_CHECK           = True
 DEEP_SCAN           = False    # get_all_channels – nur manuell
 W                   = 64       # Terminal-Breite Portrait (Pydroid3)
 
-# Vorpruefung tote Hosts
+# Vorprüfung tote Hosts
 PRECHECK_TIMEOUT    = 3.5      # v21.0: ↓ von 3.0 (TCP ist schnell)
 PRECHECK_ENABLED    = True     # False = Pre-Check deaktivieren
 
-# Qualitaetswarnung
+# Qualitätswarnung
 DEAD_LINK_WARN_PCT  = 60       # v21.5: ↑ von 50 (bessere Früherkennung schlechter Listen)
 
 # CF-Tuning (CF_MAX_RETRIES = 0 – Pydroid3 kann keine Challenge lösen)
@@ -603,7 +603,7 @@ CF_ERROR_CODES = set(range(520, 531))
 # TLS-KONTEXT
 # ==============================================================
 # WICHTIG (v19.5-Fix):
-# Dieser Context wird NUR fuer CF-Hosts verwendet.
+# Dieser Context wird NUR für CF-Hosts verwendet.
 # Non-CF-Hosts erhalten ssl=False (kein TLS-Fingerprint → kein JA3).
 # Der Context hier verbessert die Cipher-Reihenfolge,
 # kann aber den Python-OpenSSL-JA3 nicht vollständig verstecken.
@@ -664,7 +664,7 @@ _CF_BODY_RE = re.compile(
 )
 
 def detect_cloudflare(status: int, headers: dict, body: str) -> bool:
-    """3-Ebenen Cloudflare detection: Header → Statuscode → Body."""
+    """3-Ebenen Cloudflare-Erkennung: Header → Statuscode → Body."""
     lc = {k.lower(): v.lower() for k, v in headers.items()}
     if "cf-ray" in lc:                                              return True
     if lc.get("server", "") == "cloudflare":                        return True
@@ -680,7 +680,7 @@ def detect_cloudflare(status: int, headers: dict, body: str) -> bool:
 _CF_HOST_TTL = 7 * 86400   # 7 Tage
 
 def load_cf_hosts() -> set:
-    """Laedt CF-Hosts aus cf_hosts.json (ignoriert Eintraege > 7 Tage)."""
+    """Lädt CF-Hosts aus cf_hosts.json (ignoriert Einträge > 7 Tage)."""
     if not os.path.exists(CF_HOSTS_FILE):
         return set()
     try:
@@ -710,29 +710,29 @@ def save_cf_hosts(hosts: set):
 # HTTP STATUS INTELLIGENCE
 # ==============================================================
 _STATUS_INFO = {
-    200: ("\033[92m", "✓", "OK",           ""),
-    206: ("\033[92m", "✓", "Partial OK",   ""),
-    301: ("\033[93m", "→", "Redirect",     "URL pruefen"),
-    302: ("\033[93m", "→", "Redirect",     "URL pruefen"),
-    401: ("\033[91m", "✗", "Unauthorized", "Account ungueltig"),
-    403: ("\033[91m", "✗", "Forbidden",    "IP/Geo -> VPN"),
-    404: ("\033[91m", "✗", "Not Found",    "Endpunkt fehlt"),
-    429: ("\033[93m", "⊙", "Rate Limit",   "Jitter erhoehen"),
-    451: ("\033[91m", "✗", "Geo-Block",    "Legal Block -> VPN"),
-    500: ("\033[91m", "✗", "Server Error", "Server defekt"),
-    502: ("\033[91m", "✗", "Bad Gateway",  "Proxy-Fehler"),
-    503: ("\033[91m", "✗", "Unavailable",  "Ueberlastet"),
-    520: ("\033[33m", "⚠", "CF Unknown",   "CF-Fehler"),
-    521: ("\033[33m", "⚠", "CF Down",      "Origin offline"),
-    522: ("\033[33m", "⚠", "CF Timeout",   "Origin stumm"),
-    523: ("\033[33m", "⚠", "CF Reach",     "Origin weg"),
-    524: ("\033[33m", "⚠", "CF A-Timeout", "Origin zu langsam"),
-    525: ("\033[33m", "⚠", "CF SSL",       "SSL Handshake"),
-    526: ("\033[33m", "⚠", "CF SSL Inv",   "SSL ungueltig"),
+    200: ("\033[92m", "●", "OK",           ""),
+    206: ("\033[92m", "●", "Partial OK",   ""),
+    301: ("\033[93m", "→", "Redirect",     "URL prüfen"),
+    302: ("\033[93m", "→", "Redirect",     "URL prüfen"),
+    401: ("\033[91m", "✕", "Unauthorized", "Account ungültig"),
+    403: ("\033[91m", "✕", "Forbidden",    "IP/Geo -> VPN"),
+    404: ("\033[91m", "✕", "Not Found",    "Endpunkt fehlt"),
+    429: ("\033[93m", "◓", "Rate Limit",   "Jitter erhöhen"),
+    451: ("\033[91m", "✕", "Geo-Block",    "Legal Block -> VPN"),
+    500: ("\033[91m", "✕", "Server Error", "Server defekt"),
+    502: ("\033[91m", "✕", "Bad Gateway",  "Proxy-Fehler"),
+    503: ("\033[91m", "✕", "Unavailable",  "Ueberlastet"),
+    520: ("\033[33m", "▲", "CF Unknown",   "CF-Fehler"),
+    521: ("\033[33m", "▲", "CF Down",      "Origin offline"),
+    522: ("\033[33m", "▲", "CF Timeout",   "Origin stumm"),
+    523: ("\033[33m", "▲", "CF Reach",     "Origin weg"),
+    524: ("\033[33m", "▲", "CF A-Timeout", "Origin zu langsam"),
+    525: ("\033[33m", "▲", "CF SSL",       "SSL Handshake"),
+    526: ("\033[33m", "▲", "CF SSL Inv",   "SSL ungültig"),
 }
 
 def http_status_str(code: int) -> str:
-    col, icon, label, hint = _STATUS_INFO.get(code, ("\033[91m", "✗", f"HTTP {code}", ""))
+    col, icon, label, hint = _STATUS_INFO.get(code, ("\033[91m", "✕", f"HTTP {code}", ""))
     s = f"{col}{icon} [{code} {label}]\033[0m"
     if hint:
         s += f" \033[2m({hint})\033[0m"
@@ -741,11 +741,11 @@ def http_status_str(code: int) -> str:
 def _status_icon_line(code: int, host: str, extra: str = "") -> str:
     """
     v21.0: Einzeilige Status-Ausgabe pro Account (tqdm.write).
-    Format: ✓ [200 OK] | server.tv:8080 | Zusatzinfo
+    Format: ● [200 OK] | server.tv:8080 | Zusatzinfo
     Inspiriert von Hippie65 Status-Dot-System.
     """
     col, icon, label, hint = _STATUS_INFO.get(
-        code, ("\033[91m", "✗", f"HTTP {code}", ""))
+        code, ("\033[91m", "✕", f"HTTP {code}", ""))
     host_s = host.replace("http://", "").replace("https://", "")
     host_s = _shorten(host_s, 32)
     parts  = [f"{col}{icon} [{code} {label}]\033[0m",
@@ -898,7 +898,7 @@ async def generate_m3u_plus_for_account(
         r'[\s]*(?:'
         r'\||✦|►|•|◆|▶|★|»|–|-|:|'    # Standard
         r'➤|➜|➔|➽|❖|◈|▪|▫|→|›|➢|➡|➠|➦|▸|▹|'  # Pfeile
-        r'✓|✔|✗|✘|⚫|⚪|💠|⚡|⭐|🌟|'    # Icons
+        r'●|✔|✕|✘|⚫|⚪|💠|⚡|⭐|🌟|'    # Icons
         r'⎪|┃|▎|⬤|⋅|\]|\)'            # Bᴀᴘʜᴏᴍᴇᴛ-Extras
         r')[\s]*'
         r'|\s+'                         # reiner Leerzeichen-Trenner ("DE Kino")
@@ -1035,7 +1035,7 @@ async def generate_m3u_plus_for_account(
                     # Adult-Streams visuell im tvg-name markieren
                     if _is_adult(grp):
                         if 'group-title="' in extinf_buf:
-                            # Fuege 🔞 vor dem Namen ein (nach dem letzten Komma vor der URL-Zeile)
+                            # Füge 🔞 vor dem Namen ein (nach dem letzten Komma vor der URL-Zeile)
                             if ',🔞 ' not in extinf_buf and ',🔞' not in extinf_buf:
                                 extinf_buf = extinf_buf.replace(',', ',🔞 ', 1)
                         adult_count += 1
@@ -1094,10 +1094,10 @@ async def export_m3u_plus_batch(accounts: list,
             with open(fname, "w", encoding="utf-8") as f:
                 f.write("\n".join(lines) + "\n")
             print(c(C.GREEN,
-                    f"  ✓ {lc} Live + {vc} VOD/Serien → {fname}"))
+                    f"  ● {lc} Live + {vc} VOD/Serien → {fname}"))
             ok_count += 1
         except Exception as e:
-            print(c(C.RED, f"  ✗ Schreibfehler {fname}: {e}"))
+            print(c(C.RED, f"  ✕ Schreibfehler {fname}: {e}"))
 
     return ok_count
 
@@ -1261,7 +1261,7 @@ def _normalize(text: str) -> str:
 
 
 def _extract_names(raw: str, key: str = "category_name") -> str:
-    """Parst JSON-Array und gibt key-Werte als String zurueck."""
+    """Parst JSON-Array und gibt key-Werte als String zurück."""
     try:
         items = json.loads(raw)
         if isinstance(items, list):
@@ -1279,7 +1279,7 @@ def score_de_content(text: str, vod_mode: bool = False,
                      tz_bonus: int = 0,
                      cat_count: int = 999) -> tuple:
     """
-    Berechnet DE-Score. Rueckgabe: (is_de, tier, score)
+    Berechnet DE-Score. Rückgabe: (is_de, tier, score)
       tier=1 sicherer Treffer [DE*]
       tier=2 wahrscheinlich   [DE~]
       tier=0 kein DE
@@ -1550,21 +1550,21 @@ def print_config_banner(total: int, loaded: int, cf_preloaded: int,
                         workers_actual: int, workers_auto: bool = False):
     print(_hdr("XTREAM DE SCANNER v21.4"))
     rows = [
-        ("Links discovered",    str(total)),
-        ("Known links skipped",  str(loaded)),
+        ("Links gefunden",    str(total)),
+        ("Bekannte übersprungen",  str(loaded)),
         ("CF-Hosts geladen",  str(cf_preloaded)),
         ("Workers",            f"{workers_actual}" + (" (auto)" if workers_auto else " (manuell)")),
         ("Timeout",           f"{TIMEOUT}s / Task-Max {TIMEOUT * TASK_TIMEOUT_MULT}s"),
         ("Pre-Check",         f"{'JA' if PRECHECK_ENABLED else 'NEIN'} ({PRECHECK_TIMEOUT}s TCP)"),
         ("CF-Retries",        f"{CF_MAX_RETRIES}" + (" (Pydroid3: sofort skip)" if CF_MAX_RETRIES == 0 else "")),
-        ("VPN detection",         "JA" if VPN_CHECK else "NEIN"),
+        ("VPN-Prüfung",         "JA" if VPN_CHECK else "NEIN"),
         ("Sample-Check",      "JA" if SAMPLE_CHECK else "NEIN"),
-        ("Trial filter",      "JA" if FILTER_TRIAL else "NEIN"),
-        ("Expiration filter",     f"< {EXP_MIN_DAYS} Tage / Warn < {EXP_WARN_DAYS} Tage" if EXP_MIN_DAYS > 0 else "AUS"),
+        ("Trial-Filter",      "JA" if FILTER_TRIAL else "NEIN"),
+        ("Ablauf-Filter",     f"< {EXP_MIN_DAYS} Tage / Warn < {EXP_WARN_DAYS} Tage" if EXP_MIN_DAYS > 0 else "AUS"),
         ("Max Links/Host",    str(MAX_LINKS_PER_HOST) if MAX_LINKS_PER_HOST > 0 else "unbegrenzt"),
         ("Kat-Min",           f"{CAT_MIN_COUNT} (Score /2 darunter)"),
         ("Streaming-Output",  "JA (sofort)"),
-        ("SSL verification",        "False (kein JA3-Fingerprint)"),
+        ("SSL-Prüfung",        "False (kein JA3-Fingerprint)"),
         ("Output: Frei",      OUTPUT_FILE),
         ("Output: TV-only",   TVONLY_FILE),
         ("Output: VPN",       VPN_FILE),
@@ -1584,7 +1584,7 @@ def print_summary(state):
         filled = int(round(val / total_processed * width))
         return c(C.DIM, "█" * filled + "░" * (width - filled))
 
-    # Feste Spaltenbreiten fuer saubere Ausrichtung
+    # Feste Spaltenbreiten für saubere Ausrichtung
     LBL_W   = 28   # Label-Spalte
     VAL_W   = 6    # Wert-Spalte
     BAR_W   = 10   # Balken-Spalte
@@ -1664,7 +1664,7 @@ def print_summary(state):
             print(c(C.YELLOW + C.BOLD,
                     f"  [!] WARNUNG: {dead_pct:.0f}% tote Links "
                     f"(TCP/DNS-Fehler). Liste ist veraltet oder "
-                    f"von schlechter Qualitaet."))
+                    f"von schlechter Qualität."))
             print()
 
     # Telemetrie
@@ -1717,17 +1717,17 @@ def _format_hit_oneline(res: dict) -> str:
 
     # ── Status-Icon: 1 sichtbares Zeichen ────────────────────
     _ICONS = {
-        200: (C.GREEN,  "✓"), 206: (C.GREEN,  "✓"),
-        403: (C.RED,    "✗"), 401: (C.RED,    "✗"),
-        404: (C.RED,    "✗"), 429: (C.YELLOW, "⊙"),
-        451: (C.RED,    "✗"),
+        200: (C.GREEN,  "●"), 206: (C.GREEN,  "●"),
+        403: (C.RED,    "✕"), 401: (C.RED,    "✕"),
+        404: (C.RED,    "✕"), 429: (C.YELLOW, "◓"),
+        451: (C.RED,    "✕"),
     }
     if http_code >= 520:
-        icon_col, icon_chr = C.ORANGE, "⚠"
+        icon_col, icon_chr = C.ORANGE, "▲"
     elif http_code == 0:
-        icon_col, icon_chr = C.GRAY,   "⧖"
+        icon_col, icon_chr = C.GRAY,   "⧗"
     else:
-        icon_col, icon_chr = _ICONS.get(http_code, (C.RED, "✗"))
+        icon_col, icon_chr = _ICONS.get(http_code, (C.RED, "✕"))
 
     # ── Felder auf feste sichtbare Breiten ───────────────────
     host_s = host.replace("https://", "").replace("http://", "")
@@ -1809,15 +1809,15 @@ class ScanState:
             "expiring":       0,   # Ablauf-Vorwarnung (expiring_links.txt)
             "host_limit":     0,   # Max. Treffer pro Host erreicht
         }
-        # Adaptiver Jitter: Multiplikator pro Host (erhoehung nach 429)
+        # Adaptiver Jitter: Multiplikator pro Host (erhöhung nach 429)
         self.host_jitter_mult  = {}   # host → float (1.0 = normal)
         # Telemetrie: Account-Zeiten
         self._timing           = []   # Liste von floats (Sekunden)
 
     def load_existing(self) -> int:
         """
-        Laedt bereits bekannte Accounts aus den Ausgabedateien.
-        v20.0: Schluessel = (username, password) – hostunabhaengig.
+        Lädt bereits bekannte Accounts aus den Ausgabedateien.
+        v20.0: Schlüssel = (username, password) – hostunabhängig.
         Verhindert Re-Scan identischer Credentials auf anderen Hosts.
         """
         count = 0
@@ -1906,7 +1906,7 @@ async def cf_preflight(session, host: str, state: ScanState,
 def detect_panel_type(server_info: dict) -> str:
     """
     Erkennt den Panel-Typ anhand von server_info-Feldern.
-    Gibt einen kurzen String zurueck: XUI / XC / Klon / SC / ?
+    Gibt einen kurzen String zurück: XUI / XC / Klon / SC / ?
     """
     name = str(server_info.get("server_name", "")).upper()
     rtmp = str(server_info.get("rtmp_port", ""))
@@ -1953,8 +1953,8 @@ async def sample_channel_check(session, api: str, u: str, pw: str,
                                 hdrs: dict, ssl_param,
                                 host: str) -> tuple:
     """
-    Laedt einen zufaelligen Live-Kanal aus get_live_streams.
-    Gibt (stream_ok: bool, name_bonus: int) zurueck.
+    Lädt einen zufälligen Live-Kanal aus get_live_streams.
+    Gibt (stream_ok: bool, name_bonus: int) zurück.
       stream_ok=True   wenn mindestens ein Stream antwortet (200/206).
       name_bonus       Anzahl DE-Tier1-Treffer in Kanalnamen der Stichprobe.
     False wenn alle Stichproben-Streams tot sind.
@@ -1977,7 +1977,7 @@ async def sample_channel_check(session, api: str, u: str, pw: str,
     except Exception:
         return True, 0
 
-    # Zufaellige Stichprobe: max. 3 Streams testen
+    # Zufällige Stichprobe: max. 3 Streams testen
     sample = random.sample(streams, min(3, len(streams)))
 
     # v19.9: Kanalnamen auf DE prüfen (alle Streams, nicht nur Stichprobe)
@@ -2021,7 +2021,7 @@ def _jitter(is_cf: bool, mult: float = 1.0) -> float:
 
 
 # ==============================================================
-# STREAM PROBE (VPN detection)
+# STREAM PROBE (VPN-Prüfung)
 # ==============================================================
 async def probe_stream_vpn(session, stream_url: str,
                            is_cf: bool, state: ScanState,
@@ -2184,7 +2184,7 @@ async def check_all_content(session, api: str, u: str, pw: str,
 async def check_account(session, host: str, u: str, pw: str,
                         state: ScanState, ssl_ctx) -> tuple:
     """
-    Vollstaendige Account-Pruefung (v19.6).
+    Vollständige Account-Prüfung (v19.6).
 
     Neu:
       - is_trial Filter
@@ -2192,7 +2192,7 @@ async def check_account(session, host: str, u: str, pw: str,
       - exp_date < EXP_MIN_DAYS Filter
       - Panel-Typ-Erkennung
       - Stichproben-Kanalcheck (SAMPLE_CHECK)
-      - Zeitmessung fuer Telemetrie
+      - Zeitmessung für Telemetrie
       - Retry-After-Header bei 429
       - _null entfernt (war ungenutzt)
 
@@ -2449,7 +2449,7 @@ async def check_account_with_retry(session, host: str, u: str, pw: str,
         if got_cookie:
             tqdm.write(
                 c(C.YELLOW,
-                  f"  [CF] cf_clearance erhalten fuer "
+                  f"  [CF] cf_clearance erhalten für "
                   f"{host.replace('http://','').replace('https://','')}")
             )
 
@@ -2520,7 +2520,7 @@ async def worker(session, state: ScanState, url: str, ssl_ctx):
     if not u or not pw:
         return None
 
-    # TCP precheck (asyncio.open_connection, kein loop nötig)
+    # TCP-Vorprüfung (asyncio.open_connection, kein loop nötig)
     if PRECHECK_ENABLED:
         reachable = await tcp_precheck(host)
         if not reachable:
@@ -2672,11 +2672,11 @@ async def worker(session, state: ScanState, url: str, ssl_ctx):
 
 
 # ==============================================================
-# SCAN-KONFIGURATION (Laufzeit – ueberschreibt globale Defaults)
+# SCAN-KONFIGURATION (Laufzeit – überschreibt globale Defaults)
 # ==============================================================
 class ScanConfig:
     """
-    Haelt alle zur Laufzeit konfigurierbaren Einstellungen.
+    Hält alle zur Laufzeit konfigurierbaren Einstellungen.
     Der Menu-Code schreibt hier rein; der Scan-Code liest hier.
     Globale Konstanten bleiben als Fallback-Defaults erhalten.
     """
@@ -2690,7 +2690,7 @@ class ScanConfig:
         self.exp_min_days   = EXP_MIN_DAYS
         self.cf_retries     = CF_MAX_RETRIES
         self.timeout        = TIMEOUT
-        self.ssl_non_cf     = False          # ssl=False fuer non-CF (default)
+        self.ssl_non_cf     = False          # ssl=False für non-CF (default)
         self.input_urls     = []             # extrahierte URLs
         self.mode_name      = "Normal"       # Anzeige-Name des Modus
         self.cf_debug       = False          # Nur CF-Hosts aus cf_hosts.json
@@ -2709,7 +2709,7 @@ class ScanConfig:
         self.mode_name    = "Schnell"
 
     def apply_preset_normal(self):
-        """NORMAL – VPN detection aktiv, empfohlen."""
+        """NORMAL – VPN-Prüfung aktiv, empfohlen."""
         self.vpn_check    = True
         self.sample_check = False
         self.precheck     = True
@@ -2726,7 +2726,7 @@ class ScanConfig:
         self.filter_trial = True
         self.exp_min_days = 7
         self.cf_retries   = 0     # v21.0 FIX: war 3 → Pydroid3-Konsistenz
-        self.mode_name    = "Gruendlich"
+        self.mode_name    = "Gründlich"
 
     def apply_preset_cf_debug(self):
         """CF-DEBUG – Nur bekannte CF-Hosts, alle Filter aus."""
@@ -2788,7 +2788,7 @@ def _auto_configure(env: EnvInfo, cfg: ScanConfig):
     Leitet optimale Einstellungen aus der Umgebung ab.
     v20.0: Setzt workers_auto = True damit die adaptive Host-Berechnung greift.
     Logik:
-      - Cloudflare hosts → mehr Retries
+      - Cloudflare-Hosts → mehr Retries
       - Sample-Check nur bei wenigen CF-Hosts (Performance)
       - Workers: adaptiv (unique_hosts//3, min 4, max 20)
     """
@@ -2845,7 +2845,7 @@ def _yn(val: bool) -> tuple:
 def _prompt(msg: str, valid: list = None, default: str = "") -> str:
     """
     Liest Benutzereingabe mit optionaler Validierung.
-    Bei leerem Input wird default zurueckgegeben.
+    Bei leerem Input wird default zurückgegeben.
     """
     hint = f"[{'/'.join(valid)}]" if valid else ""
     prompt_str = c(C.CYAN, f"\n  {msg} {hint}: ")
@@ -2857,7 +2857,7 @@ def _prompt(msg: str, valid: list = None, default: str = "") -> str:
         val = raw or default
         if valid is None or val.upper() in [v.upper() for v in valid]:
             return val.upper() if valid else val
-        print(c(C.YELLOW, f"  Ungueltig. Bitte wählen: {'/'.join(valid)}"))
+        print(c(C.YELLOW, f"  Ungültig. Bitte wählen: {'/'.join(valid)}"))
 
 def _section(title: str):
     print(f"\n{c(C.CYAN + C.BOLD, '  ' + title)}")
@@ -2869,15 +2869,15 @@ def _submenu(title: str, groups: list, header: str = None,
     Zentraler Untermenu-Renderer mit validierter Eingabe.
 
     Ersetzt das wiederholte _cls/_section/print/input-Boilerplate der
-    Untermenues. Vorteil ggue. rohem input(): konsistente Validierung
-    und Fehler-Feedback wie im Hauptmenue (via _prompt).
+    Untermenüs. Vorteil ggü. rohem input(): konsistente Validierung
+    und Fehler-Feedback wie im Hauptmenü (via _prompt).
 
     Args:
-        title:   Ueberschrift (an _section uebergeben).
+        title:   Ueberschrift (an _section übergeben).
         groups:  Liste von (gruppen_titel, [(key, label), ...]).
-                 gruppen_titel None/"" -> keine Zwischenueberschrift.
+                 gruppen_titel None/"" -> keine Zwischenüberschrift.
         header:  Optionale dynamische Info-Zeile unter dem Titel.
-        back_key:Taste fuer "Zurueck" (Default + ENTER).
+        back_key:Taste für "Zurück" (Default + ENTER).
 
     Returns:
         Validierte Auswahl in Grossbuchstaben (immer in der Tasten-Menge).
@@ -2921,7 +2921,7 @@ def _show_welcome(env: EnvInfo):
     print(bdr + c(C.WHITE + C.BOLD,
                   "  XTREAM DE SCANNER".center(iw)) + bdr)
     print(bdr + c(C.DIM,
-                  "v21.4  •  Pydroid3 Edition  •  Mai 2026".center(iw)) + bdr)
+                  "v28  ·  Pydroid Edition  ·  2026".center(iw)) + bdr)
     print(c(C.CYAN + C.BOLD, BX["ml"] + BX["h"] * iw + BX["mr"]))
 
     # ── Datei-Aufschlüsselung ─────────────────────────────────
@@ -2930,7 +2930,7 @@ def _show_welcome(env: EnvInfo):
     file_defs = [
         (OUTPUT_FILE,   C.GREEN,  "Alle Kategorien"),
         (TVONLY_FILE,   C.CYAN,   "Nur Live-TV"),
-        (VPN_FILE,      C.PURPLE, "VPN noetig"),
+        (VPN_FILE,      C.PURPLE, "VPN nötig"),
         (EXPIRING_FILE, C.YELLOW, "Endet bald"),
         (CF_FILE,       C.ORANGE, "Cloudflare"),
     ]
@@ -3022,10 +3022,10 @@ def _main_menu(env: EnvInfo) -> str:
     # ── Scan-Modi ─────────────────────────────────────────────
     print(_menu_row("A","Auto","Automatischer API + DE + Adult + VPN + Stream-Check",        C.GREEN))
     print(_menu_row("1","Schnell",   "API + DE + Adult-Check", C.WHITE))
-    print(_menu_row("2","Normal",    "API + DE + Adult + VPN detection",       C.WHITE))
+    print(_menu_row("2","Normal",    "API + DE + Adult + VPN-Prüfung",       C.WHITE))
     print(_menu_row("3","Genau","API + DE + Adult + VPN + Stream-Check",      C.WHITE))
     if cf_ok:
-        print(_menu_row("4","Debug", "Keine Checks werden durchgefuehrt",        cf_col))
+        print(_menu_row("4","Debug", "Keine Checks werden durchgeführt",        cf_col))
     else:
         print(_menu_row("4","CF-Debug", "Keine CF-Hosts",             C.GRAY, disabled=True))
     print(_menu_row("5","Manuell",   "Alle Einstellungen frei einstellbar",          C.GRAY))
@@ -3065,25 +3065,25 @@ def _show_help():
     help_blocks = [
         ("Auto-Setup [A]",
          ["Liest vorhandene cf_hosts.json und Ausgabedateien.",
-          "Waehlt automatisch optimale Workers-Anzahl,",
+          "Wählt automatisch optimale Workers-Anzahl,",
           "CF-Retries und Sample-Check-Einstellungen.",
-          "Empfohlen fuer den ersten Start."]),
+          "Empfohlen für den ersten Start."]),
         ("Schnell [1]",
-         ["Kein VPN detection, kein Stream-Test.",
+         ["Kein VPN-Prüfung, kein Stream-Test.",
           "Nur API-Check und DE-Score.",
-          "Ideal fuer grosse Listen (1000+ Links)."]),
+          "Ideal für grosse Listen (1000+ Links)."]),
         ("Normal [2]",
-         ["VPN detection per Stream-Probe aktiv.",
+         ["VPN-Prüfung per Stream-Probe aktiv.",
           "Filtert Geo-geblockte Accounts.",
-          "Empfohlen fuer Links mittlerer Qualitaet."]),
-        ("Gruendlich [3]",
-         ["Zusaetzlich: zufaellige Stream sampling.",
+          "Empfohlen für Links mittlerer Qualität."]),
+        ("Gründlich [3]",
+         ["Zusätzlich: zufällige Stream-Stichprobe.",
           "Filtert Server mit toten Streams.",
-          "Langsamer aber zuverlaessigste Ergebnisse."]),
+          "Langsamer aber zuverlässigste Ergebnisse."]),
         ("CF-Debug [4]",
-         ["Laedt alle bekannten CF-Hosts aus cf_hosts.json.",
-          "Ignoriert Pre-Check und Trial filter.",
-          "Fuer gezielte Fehleranalyse bei CF-Hosts."]),
+         ["Lädt alle bekannten CF-Hosts aus cf_hosts.json.",
+          "Ignoriert Pre-Check und Trial-Filter.",
+          "Für gezielte Fehleranalyse bei CF-Hosts."]),
     ]
     for title, lines in help_blocks:
         print(f"\n  {c(C.WHITE + C.BOLD, title)}")
@@ -3093,13 +3093,13 @@ def _show_help():
     files = [
         (OUTPUT_FILE,  "Live + VOD beide deutsch"),
         (TVONLY_FILE,  "Nur Live deutsch (kein DE-VOD)"),
-        (VPN_FILE,     "VPN nötig fuer deutschen Zugriff"),
+        (VPN_FILE,     "VPN nötig für deutschen Zugriff"),
         (CF_FILE,      "Cloudflare-geschützte Hosts"),
         (CF_HOSTS_FILE,"CF-Hosts-Persistenz (7 Tage TTL)"),
     ]
     for fname, desc in files:
         print(f"  {c(C.CYAN, f'{fname:<32}')} {c(C.GRAY, desc)}")
-    input(c(C.DIM, "\n  [ENTER] Zurueck zum Menu..."))
+    input(c(C.DIM, "\n  [ENTER] Zurück zum Menu..."))
 
 
 # ==============================================================
@@ -3115,15 +3115,15 @@ def _manual_setup(cfg: ScanConfig):
         ans = _prompt(f"{label} (J/N)", ["J", "N"], "J" if current else "N")
         return ans == "J"
 
-    cfg.vpn_check    = _toggle("VPN detection (Stream-Probe)", cfg.vpn_check)
-    cfg.sample_check = _toggle("Stream sampling",        cfg.sample_check)
-    cfg.precheck     = _toggle("TCP precheck",            cfg.precheck)
+    cfg.vpn_check    = _toggle("VPN-Prüfung (Stream-Probe)", cfg.vpn_check)
+    cfg.sample_check = _toggle("Stream-Stichprobe",        cfg.sample_check)
+    cfg.precheck     = _toggle("TCP-Vorprüfung",            cfg.precheck)
     cfg.filter_trial = _toggle("Trial-Accounts filtern",   cfg.filter_trial)
-    cfg.ssl_non_cf   = _toggle("SSL auch fuer non-CF",     cfg.ssl_non_cf)
+    cfg.ssl_non_cf   = _toggle("SSL auch für non-CF",     cfg.ssl_non_cf)
 
     _section("ABLAUFDATUM-FILTER")
     print(c(C.DIM,
-            f"  Accounts die in weniger als N Tagen ablaufen ueberspringen."))
+            f"  Accounts die in weniger als N Tagen ablaufen überspringen."))
     print(c(C.DIM, f"  0 = deaktiviert"))
     raw = _prompt(f"Mindestlaufzeit in Tagen [{cfg.exp_min_days}]",
                   default=str(cfg.exp_min_days))
@@ -3168,7 +3168,7 @@ def _input_menu() -> list:
     Gibt Liste von Zeilen zurück (für Regex-Extraktion).
     """
     _section("LINK-EINGABE")
-    print(f"  {c(C.WHITE, '[1]')}  {c(C.GRAY, 'Einfuegen      (Paste, 2x ENTER)')}")
+    print(f"  {c(C.WHITE, '[1]')}  {c(C.GRAY, 'Einfügen      (Paste, 2x ENTER)')}")
     print(f"  {c(C.WHITE, '[2]')}  {c(C.GRAY, 'Datei laden    (Pfad eingeben)')}")
     print(f"  {c(C.WHITE, '[3]')}  {c(C.GRAY, 'Beides         (Datei + Paste kombiniert)')}")
     print(f"  {c(C.WHITE, '[4]')}  {c(C.GRAY, 'Portal-Format  (host:port + user:pass Zeilen)')}")
@@ -3199,9 +3199,9 @@ def _input_menu() -> list:
 
     if choice in ("1", "3", "4"):
         prompt_text = (
-            "\n  Portal + user:pass einfuegen (2x ENTER zum Abschluss):"
+            "\n  Portal + user:pass einfügen (2x ENTER zum Abschluss):"
             if choice == "4" else
-            "\n  Inhalt einfuegen (Links automatisch extrahiert)"
+            "\n  Inhalt einfügen (Links automatisch extrahiert)"
         )
         print(c(C.WHITE, prompt_text))
         print(c(C.GRAY, "  Abschluss: 2x ENTER hintereinander:"))
@@ -3239,7 +3239,7 @@ def _confirm_screen(cfg: ScanConfig, total: int,
                     workers_actual: int, env: EnvInfo) -> bool:
     """
     Zeigt alle aktiven Einstellungen und wartet auf Bestätigung.
-    Gibt True zurueck wenn der User fortfahren moechte.
+    Gibt True zurück wenn der User fortfahren möchte.
     """
     _cls()
     _section(f"SCAN-VORBEREITUNG  [{cfg.mode_name}]")
@@ -3247,10 +3247,10 @@ def _confirm_screen(cfg: ScanConfig, total: int,
     def yn(v): return _yn(v)
 
     rows = [
-        ("Links discovered",    str(total),           C.WHITE),
-        ("Known links skipped",  str(env.known_links),
+        ("Links gefunden",    str(total),           C.WHITE),
+        ("Bekannte übersprungen",  str(env.known_links),
          C.GREEN if env.known_links > 0 else C.DIM),
-        ("Cloudflare hosts",  str(env.cf_hosts),
+        ("Cloudflare-Hosts",  str(env.cf_hosts),
          C.YELLOW if env.cf_hosts > 0 else C.DIM),
         ("Workers",
          f"{workers_actual}" + (" (auto)" if cfg.workers_auto else ""),
@@ -3262,30 +3262,30 @@ def _confirm_screen(cfg: ScanConfig, total: int,
 
     print()
     checks = [
-        ("VPN detection",          cfg.vpn_check),
-        ("Stream sampling",  cfg.sample_check),
-        ("TCP precheck",      cfg.precheck),
-        ("Trial filter",       cfg.filter_trial),
-        ("SSL verification",         cfg.ssl_non_cf),
+        ("VPN-Prüfung",          cfg.vpn_check),
+        ("Stream-Stichprobe",  cfg.sample_check),
+        ("TCP-Vorprüfung",      cfg.precheck),
+        ("Trial-Filter",       cfg.filter_trial),
+        ("SSL-Prüfung",         cfg.ssl_non_cf),
     ]
     for label, val in checks:
         v, col = _yn(val)
         print(_ok_row(label, v, val))
 
     if cfg.exp_min_days > 0:
-        print(_ok_row("Expiration filter",
+        print(_ok_row("Ablauf-Filter",
                       f"< {cfg.exp_min_days} Tage", True))
     if cfg.cf_retries != CF_MAX_RETRIES:
         print(_ok_row("CF-Retries", str(cfg.cf_retries), True))
     if env.cf_hosts > 0:
-        print(_ok_row("CF-Blacklist", "Bekannte CF-Hosts ueberspringen", cfg.cf_blacklist))
+        print(_ok_row("CF-Blacklist", "Bekannte CF-Hosts überspringen", cfg.cf_blacklist))
 
     print()
     print(c(C.DIM, f"  Ausgabe:  {OUTPUT_FILE}  /  {TVONLY_FILE}"))
     print(c(C.DIM, f"  VPN:      {VPN_FILE}"))
     print(c(C.DIM, f"  CF:       {CF_FILE}"))
 
-    ans = _prompt("\n  Start scanning?", ["J", "N"], "J")
+    ans = _prompt("\n  Scan starten?", ["J", "N"], "J")
     return ans == "J"
 
 
@@ -3303,7 +3303,7 @@ def _resume_menu(env: EnvInfo) -> bool:
             "  Der Duplikat-Skip (load_existing) verhindert doppelte"))
     print(c(C.DIM,
             "  Verarbeitung. Starte einfach neu mit demselben Link-Block."))
-    input(c(C.DIM, "\n  [ENTER] Zurueck zum Menu..."))
+    input(c(C.DIM, "\n  [ENTER] Zurück zum Menu..."))
     return False
 
 
@@ -3317,13 +3317,13 @@ def sort_output_files() -> dict:
     """
     Sortiert alle Ausgabedateien nach Hostname (netloc, A→Z).
 
-    Jede Zeile ist ein Link. Sortierschluessel ist der Hostname
+    Jede Zeile ist ein Link. Sortierschlüssel ist der Hostname
     inkl. Port (netloc). Zeilen ohne erkennbaren Hostnamen werden
     ans Ende gestellt.
-    Zwischen wechselnden Hostern wird eine Leerzeile eingefuegt.
+    Zwischen wechselnden Hostern wird eine Leerzeile eingefügt.
     Backup (*.bak) wird immer vor dem Ueberschreiben erstellt.
 
-    Rueckgabe: Dict { fname: {"vorher": int, "nachher": int,
+    Rückgabe: Dict { fname: {"vorher": int, "nachher": int,
                                "hoster": int} }
                oder  { fname: {"error": str} }
     """
@@ -3380,7 +3380,7 @@ def sort_output_files() -> dict:
 
 def _run_sort(env: EnvInfo):
     """
-    Interaktiver Menu-Schritt fuer die Hoster-Sortierung.
+    Interaktiver Menu-Schritt für die Hoster-Sortierung.
     """
     _cls()
     _section("SORTIERUNG NACH HOSTER  (alphabetisch A→Z)")
@@ -3390,7 +3390,7 @@ def _run_sort(env: EnvInfo):
 
     if not existing:
         print(c(C.DIM, "  Keine Ausgabedateien vorhanden."))
-        input(c(C.DIM, "\n  [ENTER] Zurueck..."))
+        input(c(C.DIM, "\n  [ENTER] Zurück..."))
         return
 
     print(c(C.DIM, "  Sortiert Links nach Hostname (netloc) alphabetisch A→Z."))
@@ -3418,7 +3418,7 @@ def _run_sort(env: EnvInfo):
     ans = _prompt("\n  Sortierung starten?", ["J", "N"], "J")
     if ans != "J":
         print(c(C.DIM, "  Abgebrochen."))
-        input(c(C.DIM, "  [ENTER] Zurueck..."))
+        input(c(C.DIM, "  [ENTER] Zurück..."))
         return
 
     print(c(C.DIM, "\n  Sortiere..."))
@@ -3437,23 +3437,23 @@ def _run_sort(env: EnvInfo):
                     f"{h} Hoster-Gruppe{'n' if h != 1 else ''}  →  sortiert"))
             print(c(C.DIM,  f"    Backup: {fname}.bak"))
 
-    input(c(C.DIM, "\n  [ENTER] Zurueck zum Menu..."))
+    input(c(C.DIM, "\n  [ENTER] Zurück zum Menu..."))
 
 # ==============================================================
 # DUPLIKAT-BEREINIGUNG DER AUSGABEDATEIEN (v20.0)
 # ==============================================================
 def dedup_output_files() -> dict:
     """
-    Liest Ausgabedateien, entfernt Eintraege mit identischer
-    username+password-Kombination (hostunabhaengig), und schreibt
-    die bereinigten Dateien zurueck.
+    Liest Ausgabedateien, entfernt Einträge mit identischer
+    username+password-Kombination (hostunabhängig), und schreibt
+    die bereinigten Dateien zurück.
 
     Sicherheit:
       - Backup (*.bak) wird IMMER vor dem Ueberschreiben erstellt.
       - Zeilen ohne erkennbare Credentials bleiben erhalten.
-      - Kein Datenverlust moeglich: im Fehlerfall bleibt Original.
+      - Kein Datenverlust möglich: im Fehlerfall bleibt Original.
 
-    Rueckgabe: Dict { fname: {"vorher": int, "nachher": int} }
+    Rückgabe: Dict { fname: {"vorher": int, "nachher": int} }
                  oder { fname: {"error": str} } bei Ausnahme.
     """
     target_files = [OUTPUT_FILE, TVONLY_FILE, VPN_FILE, EXPIRING_FILE]
@@ -3475,7 +3475,7 @@ def dedup_output_files() -> dict:
                 u  = qs.get("username", [None])[0]
                 pw = qs.get("password", [None])[0]
                 if not u or not pw:
-                    # Zeilen ohne erkennbare Credentials unveraendert behalten
+                    # Zeilen ohne erkennbare Credentials unverändert behalten
                     unique_lines.append(line)
                     continue
                 key = (u, pw)
@@ -3506,8 +3506,8 @@ def dedup_output_files() -> dict:
 
 def _run_dedup(env: EnvInfo):
     """
-    Interaktiver Menu-Schritt fuer die Datei-Bereinigung.
-    Zeigt Vorschau, fragt Bestaetigung, fuehrt dedup_output_files() aus.
+    Interaktiver Menu-Schritt für die Datei-Bereinigung.
+    Zeigt Vorschau, fragt Bestätigung, führt dedup_output_files() aus.
     """
     _cls()
     _section("DUPLIKAT-BEREINIGUNG  (username+password-basiert)")
@@ -3517,27 +3517,27 @@ def _run_dedup(env: EnvInfo):
 
     if not existing:
         print(c(C.DIM, "  Keine Ausgabedateien vorhanden."))
-        input(c(C.DIM, "\n  [ENTER] Zurueck..."))
+        input(c(C.DIM, "\n  [ENTER] Zurück..."))
         return
 
     print(c(C.DIM,
-            "  Entfernt Eintraege mit identischer username+password-Kombination,"))
+            "  Entfernt Einträge mit identischer username+password-Kombination,"))
     print(c(C.DIM,
-            "  unabhaengig vom Hostnamen.  Backup (*.bak) wird automatisch erstellt."))
+            "  unabhängig vom Hostnamen.  Backup (*.bak) wird automatisch erstellt."))
     print()
-    print(c(C.DIM, "  Zu pruefende Dateien:"))
+    print(c(C.DIM, "  Zu prüfende Dateien:"))
     for fname in existing:
         try:
             with open(fname, "r", encoding="utf-8") as fh:
                 cnt = sum(1 for l in fh if l.strip())
-            print(c(C.DIM, f"    {fname:<36} {cnt} Eintraege"))
+            print(c(C.DIM, f"    {fname:<36} {cnt} Einträge"))
         except Exception:
             print(c(C.DIM, f"    {fname}"))
 
     ans = _prompt("\n  Bereinigung starten?", ["J", "N"], "J")
     if ans != "J":
         print(c(C.DIM, "  Abgebrochen."))
-        input(c(C.DIM, "  [ENTER] Zurueck..."))
+        input(c(C.DIM, "  [ENTER] Zurück..."))
         return
 
     print(c(C.DIM, "\n  Bereinige..."))
@@ -3555,18 +3555,18 @@ def _run_dedup(env: EnvInfo):
                 any_removed = True
                 print(c(C.GREEN, f"  {fname}"))
                 print(c(C.GREEN,
-                        f"    {info['vorher']} → {info['nachher']} Eintraege "
+                        f"    {info['vorher']} → {info['nachher']} Einträge "
                         f"({removed} Duplikat{'e' if removed != 1 else ''} entfernt)"))
                 print(c(C.DIM, f"    Backup: {fname}.bak"))
             else:
                 print(c(C.DIM, f"  {fname}"))
                 print(c(C.DIM,
-                        f"    {info.get('vorher', 0)} Eintraege – keine Duplikate."))
+                        f"    {info.get('vorher', 0)} Einträge – keine Duplikate."))
 
     if not any_removed:
         print(c(C.DIM, "\n  Alle Dateien sind bereits duplikatfrei."))
 
-    input(c(C.DIM, "\n  [ENTER] Zurueck zum Menu..."))
+    input(c(C.DIM, "\n  [ENTER] Zurück zum Menu..."))
 
 
 def _run_export(env: EnvInfo):
@@ -3628,7 +3628,7 @@ def _run_export(env: EnvInfo):
             continue
 
     if not entries:
-        print(c(C.RED, "  ✗ Keine Accounts in den Ausgabedateien gefunden."))
+        print(c(C.RED, "  ✕ Keine Accounts in den Ausgabedateien gefunden."))
         print(c(C.DIM, "  → Zuerst einen Scan durchführen."))
         input(c(C.DIM, "\n  [Enter] zurück"))
         return
@@ -3677,7 +3677,7 @@ def _run_export(env: EnvInfo):
     selected = list(dict.fromkeys(selected))   # Reihenfolge erhalten, Duplikate weg
 
     if not selected:
-        print(c(C.RED, "  ✗ Keine gültige Auswahl."))
+        print(c(C.RED, "  ✕ Keine gültige Auswahl."))
         input(c(C.DIM, "\n  [Enter] zurück"))
         return
 
@@ -3721,12 +3721,12 @@ def _run_export(env: EnvInfo):
                         hdrs, ssl_p, include_adult,
                     )
                 except Exception as ex:
-                    print(c(C.RED, f" ✗ {ex}"))
+                    print(c(C.RED, f" ✕ {ex}"))
                     continue
 
                 total = de_c + ad_c
                 if total == 0:
-                    print(c(C.YELLOW, " ⚠ 0 Streams – übersprungen"))
+                    print(c(C.YELLOW, " ▲ 0 Streams – übersprungen"))
                     continue
 
                 safe_h = _SAFE_FILENAME.sub('_', host_s)
@@ -3737,11 +3737,11 @@ def _run_export(env: EnvInfo):
                     with open(out_f, "w", encoding="utf-8") as fh:
                         fh.write("\n".join(lines) + "\n")
                     print(c(C.GREEN,
-                            f" ✓  {de_c} DE + {ad_c} Adult"
+                            f" ●  {de_c} DE + {ad_c} Adult"
                             f" → {os.path.basename(out_f)}"))
                     ok += 1
                 except Exception as ex:
-                    print(c(C.RED, f" ✗ Schreibfehler: {ex}"))
+                    print(c(C.RED, f" ✕ Schreibfehler: {ex}"))
 
             return ok
 
@@ -3770,22 +3770,22 @@ def _run_export(env: EnvInfo):
 
     ok = _ok_box[0] or 0
     if _err_box[0]:
-        print(c(C.RED, f"\n  ✗ Export-Fehler: {_err_box[0]}"))
+        print(c(C.RED, f"\n  ✕ Export-Fehler: {_err_box[0]}"))
 
     print()
     if ok:
         print(c(C.GREEN + C.BOLD,
-                f"  ✓ {ok} M3U+ Datei(en) gespeichert in ./{M3UPLUS_DIR}/"))
+                f"  ● {ok} M3U+ Datei(en) gespeichert in ./{M3UPLUS_DIR}/"))
     else:
-        print(c(C.RED, "  ✗ Keine Dateien erstellt."))
+        print(c(C.RED, "  ✕ Keine Dateien erstellt."))
 
     input(c(C.DIM, "\n  [Enter] zurück ins Menü"))
 
 
 def run_menu() -> ScanConfig:
     """
-    Vollstaendiger Menu-Flow.
-    Gibt ein konfiguriertes ScanConfig-Objekt zurueck
+    Vollständiger Menu-Flow.
+    Gibt ein konfiguriertes ScanConfig-Objekt zurück
     oder None wenn der User abbricht.
     """
     env = EnvInfo().detect()
@@ -3806,7 +3806,7 @@ def run_menu() -> ScanConfig:
         if choice == "R":
             if not env.has_checkpoint:
                 print(c(C.RED, "\n  Kein Checkpoint vorhanden."))
-                input(c(C.DIM, "  [ENTER] Zurueck..."))
+                input(c(C.DIM, "  [ENTER] Zurück..."))
                 continue
             try:
                 with open(CHECKPOINT_FILE, "r", encoding="utf-8") as f:
@@ -3816,15 +3816,15 @@ def run_menu() -> ScanConfig:
                 cfg.resume_processed = cp.get("processed", 0)
                 cfg.mode_name = "Resume"
                 if not cfg.input_urls:
-                    print(c(C.RED, "\n  Checkpoint enthaelt keine URLs."))
-                    input(c(C.DIM, "  [ENTER] Zurueck..."))
+                    print(c(C.RED, "\n  Checkpoint enthält keine URLs."))
+                    input(c(C.DIM, "  [ENTER] Zurück..."))
                     continue
-                print(c(C.GREEN, f"\n  ✓ Checkpoint geladen: {cfg.resume_processed} bereits verarbeitet."))
+                print(c(C.GREEN, f"\n  ● Checkpoint geladen: {cfg.resume_processed} bereits verarbeitet."))
                 print(c(C.DIM, f"  Verbleibend: {max(0, len(cfg.input_urls) - cfg.resume_processed)} Links."))
                 total = len(cfg.input_urls)
                 unique_hosts = len({urlparse(u).netloc for u in cfg.input_urls})
                 already_known = env.known_links
-                print(c(C.WHITE, f"  {total} Links discovered │ {unique_hosts} unique Hoster │ {already_known} bereits bekannt (werden uebersprungen)"))
+                print(c(C.WHITE, f"  {total} Links gefunden │ {unique_hosts} unique Hoster │ {already_known} bereits bekannt (werden übersprungen)"))
                 if cfg.workers_auto:
                     workers_actual = min(max(unique_hosts // 3, 4), 4 if IS_MOBILE else 20)
                 else:
@@ -3837,8 +3837,8 @@ def run_menu() -> ScanConfig:
                 cfg.workers = workers_actual
                 return cfg
             except Exception as e:
-                print(c(C.RED, f"\n  ✗ Fehler beim Laden des Checkpoints: {e}"))
-                input(c(C.DIM, "  [ENTER] Zurueck..."))
+                print(c(C.RED, f"\n  ✕ Fehler beim Laden des Checkpoints: {e}"))
+                input(c(C.DIM, "  [ENTER] Zurück..."))
                 continue
 
         if choice == "D":
@@ -3874,7 +3874,7 @@ def run_menu() -> ScanConfig:
             if env.cf_hosts == 0:
                 print(c(C.RED,
                         "\n  Keine CF-Hosts in cf_hosts.json gespeichert."))
-                input(c(C.DIM, "  [ENTER] Zurueck..."))
+                input(c(C.DIM, "  [ENTER] Zurück..."))
                 continue
             cfg.apply_preset_cf_debug()
         elif choice == "5":
@@ -3908,7 +3908,7 @@ def run_menu() -> ScanConfig:
             cfg.input_urls = xtream_urls
 
         if not cfg.input_urls:
-            print(c(C.RED, "\n  [-] Keine gueltigen Xtream-Links discovered!"))
+            print(c(C.RED, "\n  [-] Keine gültigen Xtream-Links gefunden!"))
             ans = _prompt("  Erneut versuchen?", ["J", "N"], "J")
             if ans == "J":
                 continue
@@ -3920,7 +3920,7 @@ def run_menu() -> ScanConfig:
         unique_hosts = len({urlparse(u).netloc for u in cfg.input_urls})
         already_known = env.known_links
         print()
-        print(c(C.WHITE,  f"  {total} Links discovered"
+        print(c(C.WHITE,  f"  {total} Links gefunden"
                           f"  │  {unique_hosts} unique Hoster"
                           f"  │  {already_known} bereits bekannt (werden übersprungen)"))
 
@@ -3948,7 +3948,7 @@ def run_menu() -> ScanConfig:
                 return None
             continue
 
-        cfg.workers = workers_actual  # tatsaechlicher Wert fuer Scan
+        cfg.workers = workers_actual  # tatsächlicher Wert für Scan
         print()
         return cfg
 
@@ -3974,7 +3974,7 @@ def save_links(state: ScanState):
             print(c(col, f"  {label} {len(links):>4} Links  ->  {fname}"))
             saved_any = True
     if not saved_any:
-        print(c(C.DIM, "  Keine Links discovered."))
+        print(c(C.DIM, "  Keine Links gefunden."))
 
     if state._cf_hosts:
         save_cf_hosts(state._cf_hosts)
@@ -4046,7 +4046,7 @@ async def _async_main():
     loaded       = state.load_existing()
     cf_preloaded = len(state._cf_hosts)
 
-    # ── Resume-Modus: Bereits verarbeitete Links ueberspringen ─
+    # ── Resume-Modus: Bereits verarbeitete Links überspringen ─
     if getattr(cfg, 'resume', False):
         resume_processed = getattr(cfg, 'resume_processed', 0)
         if resume_processed > 0:
@@ -4059,7 +4059,7 @@ async def _async_main():
                 return
         total = len(cfg.input_urls)
 
-    # ── CF-Blacklist: Bekannte CF-Hosts ueberspringen ────────
+    # ── CF-Blacklist: Bekannte CF-Hosts überspringen ────────
     if getattr(cfg, 'cf_blacklist', False):
         cf_hosts = state._cf_hosts
         if cf_hosts:
@@ -4074,12 +4074,12 @@ async def _async_main():
             cfg.input_urls = filtered_urls
             skipped_cf = before_blacklist - len(cfg.input_urls)
             if skipped_cf > 0:
-                print(c(C.YELLOW, f"  [CF-Blacklist] {skipped_cf} Links auf bekannten CF-Hosts uebersprungen."))
+                print(c(C.YELLOW, f"  [CF-Blacklist] {skipped_cf} Links auf bekannten CF-Hosts übersprungen."))
             total = len(cfg.input_urls)
 
-    # ── v20.0: Pre-Deduplication nach username+password (hostunabhaengig) ──
+    # ── v20.0: Pre-Deduplication nach username+password (hostunabhängig) ──
     # Verhindert, dass identische Credentials mit unterschiedlichen Hosts
-    # als separate Eintraege behandelt werden (Kern-Fix v20.0).
+    # als separate Einträge behandelt werden (Kern-Fix v20.0).
     urls_raw = cfg.input_urls
     urls_filtered = []
     pre_skip_dup  = 0
@@ -4090,7 +4090,7 @@ async def _async_main():
         pw = qs.get("password", [None])[0]
         if not u or not pw:
             continue
-        key = (u, pw)                          # v20.0: hostunabhaengiger Key
+        key = (u, pw)                          # v20.0: hostunabhängiger Key
         if key in state.checked_keys or key in seen_pre:
             pre_skip_dup += 1
             continue
@@ -4170,14 +4170,14 @@ async def _async_main():
             s = state.stats
             if IS_MOBILE:
                 # Nur die wichtigsten Metriken auf Mobile
-                postfix = (f"✓={s['neu_de']+s['tvonly']} "
-                          f"⧖={s.get('timeout',0)+s.get('tcp_fehler',0)+s.get('dns_fehler',0)}")
+                postfix = (f"●={s['neu_de']+s['tvonly']} "
+                          f"⧗={s.get('timeout',0)+s.get('tcp_fehler',0)+s.get('dns_fehler',0)}")
             else:
                 # Detaillierte Metriken auf größeren Displays
                 postfix = (f"DE={s['neu_de']+s['tvonly']} "
                           f"VPN={s['vpn_de']} "
                           f"CF={s['cf']} "
-                          f"⧖={s.get('timeout',0)+s.get('tcp_fehler',0)+s.get('dns_fehler',0)}")
+                          f"⧗={s.get('timeout',0)+s.get('tcp_fehler',0)+s.get('dns_fehler',0)}")
 
             pbar.set_postfix_str(postfix, refresh=False)
 
@@ -4272,7 +4272,7 @@ def _input_multi_links_for_management() -> list:
     """
     _cls()
     _section("LINK-EINGABE FÜR STATUS-ABFRAGE")
-    print(f"  {c(C.WHITE, '[1]')}  {c(C.GRAY, 'Einfuegen      (Paste, 2x ENTER)')}")
+    print(f"  {c(C.WHITE, '[1]')}  {c(C.GRAY, 'Einfügen      (Paste, 2x ENTER)')}")
     print(f"  {c(C.WHITE, '[2]')}  {c(C.GRAY, 'Datei laden    (Pfad eingeben)')}")
     print(f"  {c(C.WHITE, '[3]')}  {c(C.GRAY, 'Beides         (Datei + Paste kombiniert)')}")
     print(f"  {c(C.WHITE, '[4]')}  {c(C.GRAY, 'Portal-Format  (host:port + user:pass Zeilen)')}")
@@ -4304,9 +4304,9 @@ def _input_multi_links_for_management() -> list:
     # Paste wenn gewünscht
     if choice in ("1", "3", "4"):
         prompt_text = (
-            "\n  Portal + user:pass einfuegen (2x ENTER zum Abschluss):"
+            "\n  Portal + user:pass einfügen (2x ENTER zum Abschluss):"
             if choice == "4" else
-            "\n  Links oder Inhalt einfuegen (2x ENTER zum Abschluss):"
+            "\n  Links oder Inhalt einfügen (2x ENTER zum Abschluss):"
         )
         print(c(C.WHITE, prompt_text))
         print(c(C.GRAY, "  Abschluss: 2x ENTER hintereinander:"))
@@ -4408,10 +4408,10 @@ def _input_multi_links(prompt: str = "Links paste (mehrere ok) oder [A] alle aus
             try:
                 with open(temp_file, "w", encoding="utf-8") as f:
                     f.write(template)
-                print(c(C.GREEN, f"\n  ✓ Datei erstellt: {temp_file}"))
-                print(c(C.YELLOW, f"  ⚠️  Öffne {temp_file} in Editor, paste Links ein, speichern, dann [ENTER]"))
+                print(c(C.GREEN, f"\n  ● Datei erstellt: {temp_file}"))
+                print(c(C.YELLOW, f"  ▲️  Öffne {temp_file} in Editor, paste Links ein, speichern, dann [ENTER]"))
             except Exception as e:
-                print(c(C.RED, f"\n  ✗ Fehler beim Erstellen: {e}"))
+                print(c(C.RED, f"\n  ✕ Fehler beim Erstellen: {e}"))
                 return []
 
         input(c(C.CYAN, "\n  Datei bereit - [ENTER] wenn fertig mit Einfügen: "))
@@ -4423,27 +4423,27 @@ def _input_multi_links(prompt: str = "Links paste (mehrere ok) oder [A] alle aus
 
             extracted = _extract_xtream_links(file_content)
             if extracted:
-                print(c(C.GREEN, f"\n  ✓ {len(extracted)} Link(s) aus {temp_file} extrahiert."))
+                print(c(C.GREEN, f"\n  ● {len(extracted)} Link(s) aus {temp_file} extrahiert."))
             else:
-                print(c(C.RED, f"\n  ✗ Keine gültigen Links in {temp_file} gefunden."))
+                print(c(C.RED, f"\n  ✕ Keine gültigen Links in {temp_file} gefunden."))
 
             return extracted
         except Exception as e:
-            print(c(C.RED, f"\n  ✗ Fehler beim Lesen: {e}"))
+            print(c(C.RED, f"\n  ✕ Fehler beim Lesen: {e}"))
             return []
 
     # Direkter Paste (Fallback für Single-Line)
     extracted = _extract_xtream_links(user_input)
 
     if extracted:
-        print(c(C.GREEN, f"\n  ✓ {len(extracted)} Link(s) extrahiert."))
+        print(c(C.GREEN, f"\n  ● {len(extracted)} Link(s) extrahiert."))
         return extracted
 
     # Kein Input/Fehler
     if user_input:
-        print(c(C.YELLOW, f"\n  ⚠️  Keine gültigen Links erkannt."))
+        print(c(C.YELLOW, f"\n  ▲️  Keine gültigen Links erkannt."))
     else:
-        print(c(C.YELLOW, f"\n  ⚠️  Keine Eingabe."))
+        print(c(C.YELLOW, f"\n  ▲️  Keine Eingabe."))
 
     return []
 
@@ -4504,7 +4504,7 @@ class LinkLedger:
             with open(LEDGER_FILE, "w", encoding="utf-8") as f:
                 json.dump(export, f, indent=2, ensure_ascii=False)
         except Exception as e:
-            print(c(C.RED, f"  ✗ Fehler beim Speichern des Ledgers: {e}"))
+            print(c(C.RED, f"  ✕ Fehler beim Speichern des Ledgers: {e}"))
 
     def get_key(self, url: str) -> str:
         """Extrahiert username:password aus URL als Key"""
@@ -4839,11 +4839,11 @@ def _run_link_management(ledger: LinkLedger, env: EnvInfo):
             urls = _input_multi_links_for_management()
 
             if not urls:
-                print(c(C.RED, "\n  ✗ Keine gültigen Links discovered."))
+                print(c(C.RED, "\n  ✕ Keine gültigen Links gefunden."))
                 input(c(C.DIM, "\n  [ENTER]..."))
                 continue
 
-            print(c(C.GREEN, f"\n  ✓ {len(urls)} Link(s) gefunden."))
+            print(c(C.GREEN, f"\n  ● {len(urls)} Link(s) gefunden."))
             print()
 
             checker = LinkStatusChecker()
@@ -4857,11 +4857,11 @@ def _run_link_management(ledger: LinkLedger, env: EnvInfo):
                     ledger_count = ledger.get_unique_users(u)
                     host_short = urlparse(u).netloc[:20]
 
-                    status_icon = c(C.GREEN, "✓")
+                    status_icon = c(C.GREEN, "●")
                     if result.get("days_left") and result["days_left"] < 7:
-                        status_icon = c(C.YELLOW, "⚠")
+                        status_icon = c(C.YELLOW, "▲")
                     elif result.get("days_left") and result["days_left"] < 0:
-                        status_icon = c(C.RED, "✗")
+                        status_icon = c(C.RED, "✕")
 
                     max_icon = ""
                     if result["max_con"] > 0 and result["active_con"] >= result["max_con"]:
@@ -4874,7 +4874,7 @@ def _run_link_management(ledger: LinkLedger, env: EnvInfo):
                 else:
                     error_count += 1
                     host_short = urlparse(u).netloc[:20]
-                    print(f"  {idx:2d}. {c(C.RED, '✗')} {host_short:20} | {result.get('error', 'Fehler')}")
+                    print(f"  {idx:2d}. {c(C.RED, '✕')} {host_short:20} | {result.get('error', 'Fehler')}")
 
             print()
             print(c(C.CYAN, f"  Ergebnis: {success_count} OK, {error_count} Fehler"))
@@ -4886,7 +4886,7 @@ def _run_link_management(ledger: LinkLedger, env: EnvInfo):
             print()
 
             if not ledger.data:
-                print(c(C.YELLOW, "  ⚠️  Keine Konten im Ledger."))
+                print(c(C.YELLOW, "  ▲️  Keine Konten im Ledger."))
                 input(c(C.DIM, "\n  [ENTER]..."))
                 continue
 
@@ -4910,13 +4910,13 @@ def _run_link_management(ledger: LinkLedger, env: EnvInfo):
                     result = checker.check_url_sync(first_url)
                     if "success" in result:
                         ok_count += 1
-                        status = c(C.GREEN, "✓")
+                        status = c(C.GREEN, "●")
                         if result.get("days_left") and result["days_left"] < 7:
-                            status = c(C.YELLOW, "⚠")
+                            status = c(C.YELLOW, "▲")
                             warn_count += 1
                     else:
                         err_count += 1
-                        status = c(C.RED, "✗")
+                        status = c(C.RED, "✕")
                     persons = len(set(a.get("person") for a in assignments))
                     print(f"  {idx:2d}. {status} {key[:30]:30} | {persons} Person(en)")
 
@@ -4934,9 +4934,9 @@ def _run_link_management(ledger: LinkLedger, env: EnvInfo):
             notes = input(c(C.CYAN, "  Notizen (optional): ")).strip()
 
             if ledger.assign(url, person, device=device or None, notes=notes or None):
-                print(c(C.GREEN, f"\n  ✓ {person} zugewiesen."))
+                print(c(C.GREEN, f"\n  ● {person} zugewiesen."))
             else:
-                print(c(C.RED, "  ✗ Fehler beim Zuweisen."))
+                print(c(C.RED, "  ✕ Fehler beim Zuweisen."))
             input(c(C.DIM, "\n  [ENTER]..."))
 
         elif choice == "4":
@@ -4947,9 +4947,9 @@ def _run_link_management(ledger: LinkLedger, env: EnvInfo):
             person = input(c(C.CYAN, "  Person: ")).strip()
 
             if ledger.unassign(url, person):
-                print(c(C.GREEN, f"\n  ✓ {person} entfernt."))
+                print(c(C.GREEN, f"\n  ● {person} entfernt."))
             else:
-                print(c(C.RED, "  ✗ Nicht gefunden."))
+                print(c(C.RED, "  ✕ Nicht gefunden."))
             input(c(C.DIM, "\n  [ENTER]..."))
 
         elif choice == "5":
@@ -5007,9 +5007,9 @@ def _run_contact_management(ledger: LinkLedger):
             notes = input(c(C.CYAN, "  Notizen (optional): ")).strip()
 
             if ledger.add_contact(name, phone, email, notes):
-                print(c(C.GREEN, f"\n  ✓ Kontakt '{name}' gespeichert."))
+                print(c(C.GREEN, f"\n  ● Kontakt '{name}' gespeichert."))
             else:
-                print(c(C.RED, "  ✗ Fehler."))
+                print(c(C.RED, "  ✕ Fehler."))
             input(c(C.DIM, "\n  [ENTER]..."))
 
         elif choice == "2":
@@ -5037,7 +5037,7 @@ def _run_contact_management(ledger: LinkLedger):
             name = input(c(C.CYAN, "  Name: ")).strip()
             contact = ledger.get_contact(name)
             if not contact:
-                print(c(C.RED, "  ✗ Kontakt nicht gefunden."))
+                print(c(C.RED, "  ✕ Kontakt nicht gefunden."))
                 input(c(C.DIM, "\n  [ENTER]..."))
                 continue
 
@@ -5046,9 +5046,9 @@ def _run_contact_management(ledger: LinkLedger):
             notes = input(c(C.CYAN, f"  Notizen [{contact.get('notes', '')}]: ")).strip() or contact.get("notes", "")
 
             if ledger.add_contact(name, phone, email, notes):
-                print(c(C.GREEN, f"\n  ✓ Kontakt aktualisiert."))
+                print(c(C.GREEN, f"\n  ● Kontakt aktualisiert."))
             else:
-                print(c(C.RED, "  ✗ Fehler."))
+                print(c(C.RED, "  ✕ Fehler."))
             input(c(C.DIM, "\n  [ENTER]..."))
 
 
@@ -5077,9 +5077,9 @@ def _run_ledger_import_export(ledger: LinkLedger):
                 csv_data = ledger.export_to_csv()
                 with open(filename, "w", encoding="utf-8") as f:
                     f.write(csv_data)
-                print(c(C.GREEN, f"\n  ✓ Exportiert zu '{filename}'"))
+                print(c(C.GREEN, f"\n  ● Exportiert zu '{filename}'"))
             except Exception as e:
-                print(c(C.RED, f"  ✗ Fehler: {e}"))
+                print(c(C.RED, f"  ✕ Fehler: {e}"))
             input(c(C.DIM, "\n  [ENTER]..."))
 
         elif choice == "2":
@@ -5088,7 +5088,7 @@ def _run_ledger_import_export(ledger: LinkLedger):
             print()
             filename = input(c(C.CYAN, "  Dateiname: ")).strip()
             if not os.path.exists(filename):
-                print(c(C.RED, "  ✗ Datei nicht gefunden."))
+                print(c(C.RED, "  ✕ Datei nicht gefunden."))
                 input(c(C.DIM, "\n  [ENTER]..."))
                 continue
 
@@ -5096,9 +5096,9 @@ def _run_ledger_import_export(ledger: LinkLedger):
                 with open(filename, "r", encoding="utf-8") as f:
                     csv_data = f.read()
                 count = ledger.import_from_csv(csv_data)
-                print(c(C.GREEN, f"\n  ✓ {count} Einträge importiert."))
+                print(c(C.GREEN, f"\n  ● {count} Einträge importiert."))
             except Exception as e:
-                print(c(C.RED, f"  ✗ Fehler: {e}"))
+                print(c(C.RED, f"  ✕ Fehler: {e}"))
             input(c(C.DIM, "\n  [ENTER]..."))
 
 
