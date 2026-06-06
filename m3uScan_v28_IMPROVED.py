@@ -709,33 +709,43 @@ def save_cf_hosts(hosts: set):
 # ==============================================================
 # HTTP STATUS INTELLIGENCE
 # ==============================================================
+# Position [0] = semantische Theme-Rolle (zur Laufzeit aufgeloest,
+# da class C/THEME erst weiter unten definiert werden).
 _STATUS_INFO = {
-    200: ("\033[92m", "●", "OK",           ""),
-    206: ("\033[92m", "●", "Partial OK",   ""),
-    301: ("\033[93m", "→", "Redirect",     "URL prüfen"),
-    302: ("\033[93m", "→", "Redirect",     "URL prüfen"),
-    401: ("\033[91m", "✕", "Unauthorized", "Account ungültig"),
-    403: ("\033[91m", "✕", "Forbidden",    "IP/Geo -> VPN"),
-    404: ("\033[91m", "✕", "Not Found",    "Endpunkt fehlt"),
-    429: ("\033[93m", "◓", "Rate Limit",   "Jitter erhöhen"),
-    451: ("\033[91m", "✕", "Geo-Block",    "Legal Block -> VPN"),
-    500: ("\033[91m", "✕", "Server Error", "Server defekt"),
-    502: ("\033[91m", "✕", "Bad Gateway",  "Proxy-Fehler"),
-    503: ("\033[91m", "✕", "Unavailable",  "Ueberlastet"),
-    520: ("\033[33m", "▲", "CF Unknown",   "CF-Fehler"),
-    521: ("\033[33m", "▲", "CF Down",      "Origin offline"),
-    522: ("\033[33m", "▲", "CF Timeout",   "Origin stumm"),
-    523: ("\033[33m", "▲", "CF Reach",     "Origin weg"),
-    524: ("\033[33m", "▲", "CF A-Timeout", "Origin zu langsam"),
-    525: ("\033[33m", "▲", "CF SSL",       "SSL Handshake"),
-    526: ("\033[33m", "▲", "CF SSL Inv",   "SSL ungültig"),
+    200: ("SUCCESS", "●", "OK",           ""),
+    206: ("SUCCESS", "●", "Partial OK",   ""),
+    301: ("WARN",    "→", "Redirect",     "URL prüfen"),
+    302: ("WARN",    "→", "Redirect",     "URL prüfen"),
+    401: ("DANGER",  "✕", "Unauthorized", "Account ungültig"),
+    403: ("DANGER",  "✕", "Forbidden",    "IP/Geo -> VPN"),
+    404: ("DANGER",  "✕", "Not Found",    "Endpunkt fehlt"),
+    429: ("WARN",    "◓", "Rate Limit",   "Jitter erhöhen"),
+    451: ("DANGER",  "✕", "Geo-Block",    "Legal Block -> VPN"),
+    500: ("DANGER",  "✕", "Server Error", "Server defekt"),
+    502: ("DANGER",  "✕", "Bad Gateway",  "Proxy-Fehler"),
+    503: ("DANGER",  "✕", "Unavailable",  "Überlastet"),
+    520: ("CF",      "▲", "CF Unknown",   "CF-Fehler"),
+    521: ("CF",      "▲", "CF Down",      "Origin offline"),
+    522: ("CF",      "▲", "CF Timeout",   "Origin stumm"),
+    523: ("CF",      "▲", "CF Reach",     "Origin weg"),
+    524: ("CF",      "▲", "CF A-Timeout", "Origin zu langsam"),
+    525: ("CF",      "▲", "CF SSL",       "SSL Handshake"),
+    526: ("CF",      "▲", "CF SSL Inv",   "SSL ungültig"),
 }
 
+def _status_col(role: str) -> str:
+    """Theme-Rolle → ANSI-Farbe (zur Laufzeit, wenn C/THEME existieren)."""
+    return {
+        "SUCCESS": C.SUCCESS, "DANGER": C.DANGER, "WARN": C.WARN,
+        "INFO": C.INFO, "CF": C.ORANGE, "SPECIAL": C.SPECIAL,
+    }.get(role, C.DANGER)
+
 def http_status_str(code: int) -> str:
-    col, icon, label, hint = _STATUS_INFO.get(code, ("\033[91m", "✕", f"HTTP {code}", ""))
-    s = f"{col}{icon} [{code} {label}]\033[0m"
+    role, icon, label, hint = _STATUS_INFO.get(code, ("DANGER", "✕", f"HTTP {code}", ""))
+    col = _status_col(role)
+    s = f"{col}{icon} [{code} {label}]{C.RESET}"
     if hint:
-        s += f" \033[2m({hint})\033[0m"
+        s += f" {C.DIM}({hint}){C.RESET}"
     return s
 
 def _status_icon_line(code: int, host: str, extra: str = "") -> str:
@@ -744,11 +754,12 @@ def _status_icon_line(code: int, host: str, extra: str = "") -> str:
     Format: ● [200 OK] | server.tv:8080 | Zusatzinfo
     Inspiriert von Hippie65 Status-Dot-System.
     """
-    col, icon, label, hint = _STATUS_INFO.get(
-        code, ("\033[91m", "✕", f"HTTP {code}", ""))
+    role, icon, label, hint = _STATUS_INFO.get(
+        code, ("DANGER", "✕", f"HTTP {code}", ""))
+    col = _status_col(role)
     host_s = host.replace("http://", "").replace("https://", "")
     host_s = _shorten(host_s, 32)
-    parts  = [f"{col}{icon} [{code} {label}]\033[0m",
+    parts  = [f"{col}{icon} [{code} {label}]{C.RESET}",
               c(C.DIM, f"| {host_s}")]
     if hint:
         parts.append(c(C.DIM, f"| {hint}"))
