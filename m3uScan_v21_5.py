@@ -4190,46 +4190,70 @@ def _extract_xtream_links(text: str) -> list:
 
 def _input_multi_links(prompt: str = "Links paste (mehrere ok) oder [A] alle aus Datei") -> list:
     """
-    Interaktive Eingabe für mehrere Links.
+    Intelligente Multi-Link Eingabe mit wiederholtem Prompt.
+    Sammelt alle Links solange, bis keine neuen mehr hinzukommen.
     - [A] = alle aus free_links.txt, free_links_TVonly.txt, vpn_links.txt
-    - Beliebiger Text = extrahiert automatisch Xtream-Links
-    - Akzeptiert mehrzeilige Eingabe (Ctrl+D zum Beenden auf Linux/Pydroid)
+    - Mehrfaches Paste möglich (input wird mehrfach aufgefordert)
+    - Extrahiert automatisch alle gültigen Xtream-Links
     """
     print()
-    print(c(C.DIM, "  [Eingabe beenden mit Ctrl+D (Linux) oder Ctrl+Z+Enter (Windows)]"))
 
-    lines = []
-    user_input = input(c(C.CYAN, f"  {prompt}:\n  → ")).strip()
+    all_extracted = []
 
-    # Prüfe auf [A]
-    if user_input.upper() == "A":
-        urls = []
-        for fname in [OUTPUT_FILE, TVONLY_FILE, VPN_FILE]:
-            if os.path.exists(fname):
-                with open(fname, "r", encoding="utf-8") as f:
-                    urls.extend(l.strip() for l in f if l.strip())
-        return urls
+    while True:
+        if not all_extracted:
+            # Erste Eingabe
+            user_input = input(c(C.CYAN, f"  {prompt}:\n  → ")).strip()
 
-    # Wenn nur eine Zeile (sofort Eingabe), extrahiere Links
-    extracted = _extract_xtream_links(user_input)
+            # Prüfe auf [A]
+            if user_input.upper() == "A":
+                urls = []
+                for fname in [OUTPUT_FILE, TVONLY_FILE, VPN_FILE]:
+                    if os.path.exists(fname):
+                        with open(fname, "r", encoding="utf-8") as f:
+                            urls.extend(l.strip() for l in f if l.strip())
+                return urls
 
-    # Falls keine Links in Zeile 1, erlaube mehrzeilige Eingabe
-    if not extracted and user_input:
-        print(c(C.YELLOW, "  ⚠️  Keine vollständigen Links erkannt. Gib alle Links ein (eine pro Zeile):"))
-        try:
-            while True:
-                line = input("  → ").strip()
-                if line:
-                    lines.append(line)
+            # Extrahiere Links
+            extracted = _extract_xtream_links(user_input)
+            all_extracted.extend(extracted)
+
+            # Falls noch keine Links, frag nach mehr
+            if not extracted:
+                print(c(C.YELLOW, f"  ⚠️  Keine gültigen Links erkannt."))
+                ans = input(c(C.CYAN, "  Weitere Eingabe? [J/n]: ")).strip().upper()
+                if ans in ("", "J"):
+                    continue
                 else:
-                    break
-        except EOFError:
-            pass  # Benutzer hat Eingabe beendet (Ctrl+D)
+                    return []
 
-        combined = user_input + "\n" + "\n".join(lines)
-        extracted = _extract_xtream_links(combined)
+            # Links gefunden - frag ob mehr
+            print(c(C.GREEN, f"  ✓ {len(extracted)} Link(s) erkannt."))
+            ans = input(c(C.CYAN, "  Weitere Links hinzufügen? [j/N]: ")).strip().upper()
+            if ans != "J":
+                return all_extracted
+            # sonst: Schleife weiter für mehr Input
 
-    return extracted
+        else:
+            # Zusätzliche Eingaben
+            user_input = input(c(C.CYAN, "  Weitere Links oder [ENTER] zum Starten:\n  → ")).strip()
+
+            if not user_input:
+                # Benutzer drückte nur ENTER → Scan starten
+                return all_extracted
+
+            # Extrahiere Links
+            extracted = _extract_xtream_links(user_input)
+            if extracted:
+                all_extracted.extend(extracted)
+                print(c(C.GREEN, f"  ✓ {len(extracted)} weitere Link(s) hinzugefügt (Summe: {len(all_extracted)})"))
+            else:
+                print(c(C.YELLOW, "  ⚠️  Keine neuen Links in dieser Zeile."))
+
+            # Frag ob mehr
+            ans = input(c(C.CYAN, "  Mehr Links? [j/N]: ")).strip().upper()
+            if ans != "J":
+                return all_extracted
 
 
 class LinkLedger:
