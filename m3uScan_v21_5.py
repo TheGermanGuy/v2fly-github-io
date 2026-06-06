@@ -4286,8 +4286,49 @@ def _check_link_status(url: str) -> dict:
         return {"error": str(e)[:50]}
 
 
-def _run_link_management(ledger: LinkLedger, env: EnvInfo):
-    """[V] Link-Verwaltung mit Ledger"""
+def _extract_xtream_links(text: str) -> list:
+    """
+    Extrahiert alle gültigen Xtream-Links aus beliebigem Text.
+    Ignoriert Zeilenumbrüche, Spaces, und andere Inhalte.
+    Nutzt Regex um Links mit player_api.php oder get.php zu finden.
+    """
+    if not text or not isinstance(text, str):
+        return []
+
+    # Regex für Xtream-Links: http(s)://host:port/... mit username+password
+    pattern = r'https?://[^\s]+(?:player_api\.php|get\.php)[^\s]*[?&]username=[^&\s]+[&]password=[^&\s]+'
+
+    matches = re.findall(pattern, text, re.IGNORECASE)
+
+    # Dedupliziere (falls jemand mehrmals denselben Link pastet)
+    unique_links = list(dict.fromkeys(matches))
+
+    return unique_links
+
+
+def _input_multi_links(prompt: str = "Links paste (mehrere ok) oder [A] alle aus Datei") -> list:
+    """
+    Interaktive Eingabe für mehrere Links.
+    - [A] = alle aus free_links.txt, free_links_TVonly.txt, vpn_links.txt
+    - Beliebiger Text = extrahiert automatisch Xtream-Links
+    """
+    print()
+    user_input = input(c(C.CYAN, f"  {prompt}:\n  → ")).strip()
+
+    if user_input.upper() == "A":
+        urls = []
+        for fname in [OUTPUT_FILE, TVONLY_FILE, VPN_FILE]:
+            if os.path.exists(fname):
+                with open(fname, "r", encoding="utf-8") as f:
+                    urls.extend(l.strip() for l in f if l.strip())
+        return urls
+    else:
+        # Extrahiere Links aus beliebigem Input
+        extracted = _extract_xtream_links(user_input)
+        return extracted
+
+
+
     while True:
         _cls()
         _section("LINK-VERWALTUNG (Status + Zuweisungen)")
@@ -4307,45 +4348,50 @@ def _run_link_management(ledger: LinkLedger, env: EnvInfo):
             break
 
         elif choice == "1":
-            # Status abfragen
+            # Status abfragen - mit Multi-Link-Unterstützung
             _cls()
             _section("STATUS ABFRAGEN")
-            print()
-            url = input(c(C.CYAN, "  Link paste oder [A] alle aus Datei:\n  → ")).strip()
 
-            if url.upper() == "A":
-                urls = []
-                for fname in [OUTPUT_FILE, TVONLY_FILE, VPN_FILE]:
-                    if os.path.exists(fname):
-                        with open(fname, "r", encoding="utf-8") as f:
-                            urls.extend(l.strip() for l in f if l.strip())
-                print(f"\n  {len(urls)} Links gefunden.")
-            else:
-                urls = [url] if url else []
+            urls = _input_multi_links("Links paste (mehrere ok, Text wird ignoriert) oder [A] alle aus Datei")
 
             if not urls:
-                print(c(C.RED, "\n  ✗ Keine Links gefunden."))
+                print(c(C.RED, "\n  ✗ Keine gültigen Xtream-Links gefunden."))
                 input(c(C.DIM, "\n  [ENTER]..."))
                 continue
 
+            print(c(C.GREEN, f"\n  ✓ {len(urls)} Link(s) gefunden und validiert."))
             print()
+
+            success_count = 0
+            error_count = 0
+
             for idx, u in enumerate(urls, 1):
                 try:
                     result = _check_link_status(u)
                     if "success" in result:
+                        success_count += 1
                         ledger_count = ledger.get_unique_users(u)
                         warn = ""
                         if result["max_con"] > 0 and result["active_con"] >= result["max_con"]:
                             warn = c(C.RED, " ⚠️  MAX ERREICHT!")
-                        print(f"  {idx}. {c(C.GREEN, '✓')} Ablauf: {result['exp']} | "
-                              f"Max: {result['max_con']} | Aktiv: {result['active_con']}{warn}")
-                        if ledger_count > 0:
-                            print(f"     → Zugewiesen an {ledger_count} Person(en)")
-                    else:
-                        print(f"  {idx}. {c(C.RED, '✗')} {result.get('error', 'Fehler')}")
-                except Exception as e:
-                    print(f"  {idx}. {c(C.RED, '✗')} Exception: {str(e)[:40]}")
 
+                        # Kurz: nur Host+Status
+                        host_short = urlparse(u).netloc[:20]
+                        print(f"  {idx:2d}. {c(C.GREEN, '✓')} {host_short:20} | "
+                              f"Exp: {result['exp']:10} | Max: {result['max_con']} | "
+                              f"Aktiv: {result['active_con']}{warn}")
+                        if ledger_count > 0:
+                            print(f"       → Zugewiesen an {ledger_count} Person(en)")
+                    else:
+                        error_count += 1
+                        host_short = urlparse(u).netloc[:20]
+                        print(f"  {idx:2d}. {c(C.RED, '✗')} {host_short:20} | {result.get('error', 'Fehler')}")
+                except Exception as e:
+                    error_count += 1
+                    print(f"  {idx:2d}. {c(C.RED, '✗')} Exception: {str(e)[:35]}")
+
+            print()
+            print(c(C.CYAN, f"  Ergebnis: {success_count} OK, {error_count} Fehler von {len(urls)} insgesamt"))
             input(c(C.DIM, "\n  [ENTER]..."))
 
         elif choice == "2":
