@@ -4157,7 +4157,85 @@ async def _async_main():
 # ==============================================================
 LEDGER_FILE = "link_ledger.json"  # Speichert user:pass → Zuweisungen
 
-def _extract_xtream_links(text: str) -> list:
+def _input_multi_links_for_management() -> list:
+    """
+    Link-Eingabe für [V] Verwaltung - nutzt _input_menu() Logik.
+    Bietet vier bewährte Eingabemethoden:
+    [1] Einfügen (Paste, 2x ENTER)
+    [2] Datei laden
+    [3] Beides kombiniert
+    [4] Portal-Format (host:port + user:pass)
+    """
+    _cls()
+    _section("LINK-EINGABE FÜR STATUS-ABFRAGE")
+    print(f"  {c(C.WHITE, '[1]')}  {c(C.GRAY, 'Einfuegen      (Paste, 2x ENTER)')}")
+    print(f"  {c(C.WHITE, '[2]')}  {c(C.GRAY, 'Datei laden    (Pfad eingeben)')}")
+    print(f"  {c(C.WHITE, '[3]')}  {c(C.GRAY, 'Beides         (Datei + Paste kombiniert)')}")
+    print(f"  {c(C.WHITE, '[4]')}  {c(C.GRAY, 'Portal-Format  (host:port + user:pass Zeilen)')}")
+    print()
+    print(c(C.GRAY, "  Format [4] Beispiel:"))
+    print(c(C.GRAY, "    http://portal.tv:8080"))
+    print(c(C.GRAY, "    user1:pass1"))
+    print(c(C.GRAY, "    user2:pass2"))
+
+    choice = _prompt("Eingabemethode", ["1", "2", "3", "4"], "1")
+    lines = []
+
+    # Datei laden wenn gewünscht
+    if choice in ("2", "3"):
+        path = _prompt("Dateipfad")
+        path = path.strip('"').strip("'")
+        if os.path.exists(path):
+            try:
+                with open(path, "r", encoding="utf-8", errors="replace") as f:
+                    file_lines = f.readlines()
+                lines += [l.rstrip("\n") for l in file_lines]
+                cnt = len([l for l in lines if l.strip()])
+                print(c(C.GREEN, f"  [{cnt} Zeilen aus {os.path.basename(path)} geladen]"))
+            except Exception as e:
+                print(c(C.RED, f"  Fehler beim Lesen: {e}"))
+        else:
+            print(c(C.RED, f"  Datei nicht gefunden: {path}"))
+
+    # Paste wenn gewünscht
+    if choice in ("1", "3", "4"):
+        prompt_text = (
+            "\n  Portal + user:pass einfuegen (2x ENTER zum Abschluss):"
+            if choice == "4" else
+            "\n  Links oder Inhalt einfuegen (2x ENTER zum Abschluss):"
+        )
+        print(c(C.WHITE, prompt_text))
+        print(c(C.GRAY, "  Abschluss: 2x ENTER hintereinander:"))
+        empty_streak = 0
+        while True:
+            try:
+                line = input()
+            except EOFError:
+                break
+            if not line:
+                empty_streak += 1
+                if empty_streak >= 2:
+                    break
+                lines.append("")
+            else:
+                empty_streak = 0
+                lines.append(line)
+
+    # Portal-Format konvertieren wenn nötig
+    if choice == "4":
+        portal_urls = _process_portal_format(lines)
+        if portal_urls:
+            print(c(C.GREEN, f"  [{len(portal_urls)} URLs aus Portal-Format konvertiert]"))
+        return portal_urls
+
+    # Für andere Methoden: Extrahiere Links aus den Zeilen
+    text_content = "\n".join(lines)
+    extracted = _extract_xtream_links(text_content)
+
+    return extracted
+
+
+
     """
     Extrahiert alle gültigen Xtream-Links aus beliebigem Text.
     Verarbeitet mehrzeilige Eingaben (eine URL pro Zeile oder gemischt).
@@ -4424,11 +4502,8 @@ def _run_link_management(ledger: LinkLedger, env: EnvInfo):
             break
 
         elif choice == "1":
-            # Status abfragen - mit Multi-Link-Unterstützung
-            _cls()
-            _section("STATUS ABFRAGEN")
-
-            urls = _input_multi_links("Links paste (mehrere ok, Text wird ignoriert) oder [A] alle aus Datei")
+            # Status abfragen - mit bewährter Input-Methode
+            urls = _input_multi_links_for_management()
 
             if not urls:
                 print(c(C.RED, "\n  ✗ Keine gültigen Xtream-Links gefunden."))
