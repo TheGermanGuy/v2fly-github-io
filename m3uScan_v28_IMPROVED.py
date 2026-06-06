@@ -87,7 +87,7 @@ Erfordert: pip install aiohttp tqdm   |   Python 3.7+  (empf. 3.10+)
 ════════════════════════════════════════════════════════
   Pro Treffer eine Zeile:
     ✓ [200 OK] | host:port | user | 2/5 | 45T 3h | [ LABEL ]
-  HTTP-Status-Icons: ✓ OK  ✗ Fehler  ⊙ RateLimit  ⚠ CF  ⧖ Timeout (s)
+  HTTP-Status-Icons: ✓ OK  ✗ Fehler  ⊙ RateLimit  ⚠ CF  ⧖ Timeout
   Restlaufzeit: calculate_time_left() → "45T 3h" / "ABGELAUFEN"
   Live-Fortschritt: DE=12 VPN=3 CF=8 ⧖=31 im tqdm-Postfix
   Welcome-Screen: Aufschlüsselung aller Ausgabedateien mit Zeilenanzahl.
@@ -213,8 +213,8 @@ WORKERS_AUTO        = True     # False = immer WORKERS nutzen
 # Max. Treffer pro Host (Ergebnis-Dedup) – 0=unbegrenzt
 MAX_LINKS_PER_HOST  = 0        # v21.0: ↑ von 2 (mehr Redundanz)
 
-# Harter Task-Timeout (s)-Multiplikator – Basis: TIMEOUT * Multiplikator
-TASK_TIMEOUT_MULT   = 2.5      # v21.5: ↓ von 2.8 (Hard-Timeout (s): 25s max statt 28s)
+# Harter Task-Timeout-Multiplikator – Basis: TIMEOUT * Multiplikator
+TASK_TIMEOUT_MULT   = 2.5      # v21.5: ↓ von 2.8 (Hard-Timeout: 25s max statt 28s)
 
 # v21.3: Adult-Content-Erkennung
 ADULT_SCAN          = True      # Adult-Kategorien parallel scannen
@@ -229,7 +229,7 @@ ADULT_VOD_MIN       = 1         # Min. Adult VOD-Kategorien für Treffer
 _CHECKPOINT_DESKTOP = CHECKPOINT_EVERY  # Desktop: 50
 if IS_MOBILE:
     WORKERS = 4                  # ↓ von 8 (weniger CPU-Druck)
-    TASK_TIMEOUT_MULT = 2.0      # ↓ von 2.5 (Hard-Timeout (s): 20s, nicht 25s)
+    TASK_TIMEOUT_MULT = 2.0      # ↓ von 2.5 (Hard-Timeout: 20s, nicht 25s)
     CHECKPOINT_EVERY = 30        # ↓ von 50 (mehr I/O, mehr Backup-Sicherheit)
     CF_JITTER_BASE = 2.0         # ↓ von 3.0 (konservativere CF-Retry-Rate)
 
@@ -724,9 +724,9 @@ _STATUS_INFO = {
     503: ("\033[91m", "✗", "Unavailable",  "Ueberlastet"),
     520: ("\033[33m", "⚠", "CF Unknown",   "CF-Fehler"),
     521: ("\033[33m", "⚠", "CF Down",      "Origin offline"),
-    522: ("\033[33m", "⚠", "CF Timeout (s)",   "Origin stumm"),
+    522: ("\033[33m", "⚠", "CF Timeout",   "Origin stumm"),
     523: ("\033[33m", "⚠", "CF Reach",     "Origin weg"),
-    524: ("\033[33m", "⚠", "CF A-Timeout (s)", "Origin zu langsam"),
+    524: ("\033[33m", "⚠", "CF A-Timeout", "Origin zu langsam"),
     525: ("\033[33m", "⚠", "CF SSL",       "SSL Handshake"),
     526: ("\033[33m", "⚠", "CF SSL Inv",   "SSL ungueltig"),
 }
@@ -998,7 +998,7 @@ async def generate_m3u_plus_for_account(
             m3u_url,
             headers=hdrs,
             ssl=ssl_param,
-            timeout=aiohttp.ClientTimeout (s)(total=max(TIMEOUT * 4, 90)),
+            timeout=aiohttp.ClientTimeout(total=max(TIMEOUT * 4, 90)),
             allow_redirects=True,
         ) as resp:
             if resp.status != 200:
@@ -1493,7 +1493,7 @@ def print_config_banner(total: int, loaded: int, cf_preloaded: int,
         ("Known links skipped",  str(loaded)),
         ("CF-Hosts geladen",  str(cf_preloaded)),
         ("Workers",            f"{workers_actual}" + (" (auto)" if workers_auto else " (manuell)")),
-        ("Timeout (s)",           f"{TIMEOUT}s / Task-Max {TIMEOUT * TASK_TIMEOUT_MULT}s"),
+        ("Timeout",           f"{TIMEOUT}s / Task-Max {TIMEOUT * TASK_TIMEOUT_MULT}s"),
         ("Pre-Check",         f"{'JA' if PRECHECK_ENABLED else 'NEIN'} ({PRECHECK_TIMEOUT}s TCP)"),
         ("CF-Retries",        f"{CF_MAX_RETRIES}" + (" (Pydroid3: sofort skip)" if CF_MAX_RETRIES == 0 else "")),
         ("VPN detection",         "JA" if VPN_CHECK else "NEIN"),
@@ -1552,7 +1552,7 @@ def print_summary(state):
     err_rows = [
         (C.RED,    "[ TCP offline ]", "tcp_fehler", ""),
         (C.RED,    "[ DNS Fehler  ]", "dns_fehler", ""),
-        (C.YELLOW, "[ Timeout (s)     ]", "timeout",    ""),
+        (C.YELLOW, "[ Timeout     ]", "timeout",    ""),
         (C.YELLOW, "[ SSL Fehler  ]", "ssl_fehler", ""),
         (C.DIM,    "[ HTTP Fehler ]", "verbindung", ""),
     ]
@@ -1827,7 +1827,7 @@ async def cf_preflight(session, host: str, state: ScanState,
         async with session.get(
             host + "/",
             headers=hdrs,
-            timeout=aiohttp.ClientTimeout (s)(total=TIMEOUT),
+            timeout=aiohttp.ClientTimeout(total=TIMEOUT),
             ssl=ssl_ctx,           # CF-Hosts: Browser-SSLContext
             allow_redirects=True,
         ) as r:
@@ -1937,7 +1937,7 @@ async def sample_channel_check(session, api: str, u: str, pw: str,
                 url,
                 headers={"User-Agent": hdrs.get("User-Agent",""),
                          "Range": "bytes=0-512"},
-                timeout=aiohttp.ClientTimeout (s)(total=SAMPLE_TIMEOUT),
+                timeout=aiohttp.ClientTimeout(total=SAMPLE_TIMEOUT),
                 ssl=ssl_param,
             ) as r:
                 if r.status in (200, 206):
@@ -1991,7 +1991,7 @@ async def probe_stream_vpn(session, stream_url: str,
     try:
         async with session.get(
             url, headers=hdrs,
-            timeout=aiohttp.ClientTimeout (s)(total=PROBE_TIMEOUT),
+            timeout=aiohttp.ClientTimeout(total=PROBE_TIMEOUT),
             ssl=ssl_param,
         ) as r:
             await r.read()
@@ -2010,15 +2010,15 @@ async def _fetch_api(session, api: str, params: dict,
                      ssl_param=False) -> str:
     """
     Gibt Response-Text zurück oder leeren String bei Fehler.
-    v21.5: Separate sock_read-Timeout (s) verhindert hängende Reads
-    bei langsamen Servern (port von jsonWithTimeout (s) aus Bᴀᴘʜᴏᴍᴇᴛ).
+    v21.5: Separate sock_read-Timeout verhindert hängende Reads
+    bei langsamen Servern (port von jsonWithTimeout aus Bᴀᴘʜᴏᴍᴇᴛ).
     """
     try:
-        ct = aiohttp.ClientTimeout (s)(
+        ct = aiohttp.ClientTimeout(
             total       = timeout,
             connect     = min(5, timeout),
             sock_connect= min(5, timeout),
-            sock_read   = timeout,   # separates Read-Timeout (s)
+            sock_read   = timeout,   # separates Read-Timeout
         )
         async with session.get(
             api, params=params, headers=hdrs,
@@ -2031,7 +2031,7 @@ async def _fetch_api(session, api: str, params: dict,
                     r.text(errors="replace"),
                     timeout=timeout * 1.5
                 )
-    except (asyncio.Timeout (s)Error, Exception):
+    except (asyncio.TimeoutError, Exception):
         pass
     return ""
 
@@ -2156,7 +2156,7 @@ async def check_account(session, host: str, u: str, pw: str,
             api,
             params={"username": u, "password": pw},
             headers=hdrs,
-            timeout=aiohttp.ClientTimeout (s)(total=TIMEOUT),
+            timeout=aiohttp.ClientTimeout(total=TIMEOUT),
             ssl=ssl_param,
         ) as r:
             status    = r.status
@@ -2323,7 +2323,7 @@ async def check_account(session, host: str, u: str, pw: str,
         return (link, "ok", vpn_req, is_cf, live_tier,
                 category, active, max_c, exp, "", meta)
 
-    except asyncio.Timeout (s)Error:
+    except asyncio.TimeoutError:
         return None, "timeout",    False, False, 0, None, 0, 0, "", "", {}
     except aiohttp.ClientConnectorError as e:
         msg = str(e).lower()
@@ -2435,10 +2435,10 @@ async def tcp_precheck(host: str) -> bool:
         writer.close()
         try:
             await asyncio.wait_for(writer.wait_closed(), timeout=1.0)
-        except asyncio.Timeout (s)Error:
+        except asyncio.TimeoutError:
             pass
         result = True
-    except (asyncio.Timeout (s)Error, OSError, ConnectionRefusedError,
+    except (asyncio.TimeoutError, OSError, ConnectionRefusedError,
             socket.gaierror, Exception):
         result = False
 
@@ -3156,7 +3156,7 @@ def _confirm_screen(cfg: ScanConfig, total: int,
         ("Workers",
          f"{workers_actual}" + (" (auto)" if cfg.workers_auto else ""),
          C.WHITE),
-        ("Timeout (s)",           f"{cfg.timeout}s", C.DIM),
+        ("Timeout",           f"{cfg.timeout}s", C.DIM),
     ]
     for label, val, col in rows:
         print(_ok_row(label, val, col != C.DIM))
@@ -4022,7 +4022,7 @@ async def _async_main():
     ) as session:
         sem = asyncio.Semaphore(cfg.workers)
 
-        # v19.9: Harter Task-Timeout (s)-Wrapper
+        # v19.9: Harter Task-Timeout-Wrapper
         _task_timeout = TIMEOUT * TASK_TIMEOUT_MULT
 
         async def bound(url_str):
@@ -4032,7 +4032,7 @@ async def _async_main():
                         worker(session, state, url_str, ssl_ctx),
                         timeout=_task_timeout,
                     )
-                except asyncio.Timeout (s)Error:
+                except asyncio.TimeoutError:
                     async with state.lock:
                         state.stats["timeout"] += 1
                     return None
@@ -4587,7 +4587,7 @@ class LinkStatusChecker:
                 async with session.get(
                     api_url,
                     headers={"User-Agent": "Mozilla/5.0 (Android; Linux) Chrome/136"},
-                    timeout=aiohttp.ClientTimeout (s)(total=5),
+                    timeout=aiohttp.ClientTimeout(total=5),
                     ssl=False
                 ) as resp:
                     data = await resp.json()
