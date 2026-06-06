@@ -2802,6 +2802,44 @@ def _section(title: str):
     print(f"\n{c(C.CYAN + C.BOLD, '  ' + title)}")
     print(c(C.GRAY, "  " + "─" * (W - 4)))
 
+def _submenu(title: str, groups: list, header: str = None,
+             back_key: str = "Z", back_label: str = "Zurück") -> str:
+    """
+    Zentraler Untermenu-Renderer mit validierter Eingabe.
+
+    Ersetzt das wiederholte _cls/_section/print/input-Boilerplate der
+    Untermenues. Vorteil ggue. rohem input(): konsistente Validierung
+    und Fehler-Feedback wie im Hauptmenue (via _prompt).
+
+    Args:
+        title:   Ueberschrift (an _section uebergeben).
+        groups:  Liste von (gruppen_titel, [(key, label), ...]).
+                 gruppen_titel None/"" -> keine Zwischenueberschrift.
+        header:  Optionale dynamische Info-Zeile unter dem Titel.
+        back_key:Taste fuer "Zurueck" (Default + ENTER).
+
+    Returns:
+        Validierte Auswahl in Grossbuchstaben (immer in der Tasten-Menge).
+    """
+    _cls()
+    _section(title)
+    if header:
+        print()
+        print(c(C.GREEN, "  " + header))
+
+    valid = [back_key]
+    for group_title, items in groups:
+        print()
+        if group_title:
+            print(c(C.CYAN, "  " + group_title))
+        for key, label in items:
+            print(c(C.CYAN, f"  [{key}] {label}"))
+            valid.append(key.upper())
+    print()
+    print(c(C.DIM, f"  [{back_key}] {back_label}"))
+
+    return _prompt("Auswahl", valid, back_key)
+
 def _ok_row(label: str, value: str, ok: bool = True) -> str:
     icon = c(C.GREEN, "●") if ok else c(C.DIM, "○")
     col  = C.WHITE if ok else C.DIM
@@ -4710,28 +4748,25 @@ def _check_link_status(url: str) -> dict:
 def _run_link_management(ledger: LinkLedger, env: EnvInfo):
     """[V] v21.5 erweiterte Link-Verwaltung mit Status, Kontakte und Import/Export"""
     while True:
-        _cls()
-        _section("LINK-VERWALTUNG v21.5")
-        print()
-        print(c(C.GREEN, f"  Konten im Ledger: {len(ledger.data)} | Kontakte: {len(ledger.contacts)}"))
-        print()
-        print(c(C.CYAN, "  STATUS & CHECKS"))
-        print(c(C.CYAN, "  [1] Link-Status abfragen (Batch)"))
-        print(c(C.CYAN, "  [2] Alle Links Status-Check"))
-        print()
-        print(c(C.CYAN, "  VERWALTUNG"))
-        print(c(C.CYAN, "  [3] Link einer Person zuweisen"))
-        print(c(C.CYAN, "  [4] Zuweisungen entfernen"))
-        print(c(C.CYAN, "  [5] Alle Zuweisungen anzeigen"))
-        print()
-        print(c(C.CYAN, "  KONTAKTE & EXPORT"))
-        print(c(C.CYAN, "  [6] Kontakte verwalten"))
-        print(c(C.CYAN, "  [7] Ledger Import/Export"))
-        print()
-        print(c(C.DIM,  "  [Z] Zurück"))
-        print()
-
-        choice = input(c(C.WHITE, "  Select option: ")).strip().upper()
+        choice = _submenu(
+            "LINK-VERWALTUNG v21.5",
+            [
+                ("STATUS & CHECKS", [
+                    ("1", "Link-Status abfragen (Batch)"),
+                    ("2", "Alle Links Status-Check"),
+                ]),
+                ("VERWALTUNG", [
+                    ("3", "Link einer Person zuweisen"),
+                    ("4", "Zuweisungen entfernen"),
+                    ("5", "Alle Zuweisungen anzeigen"),
+                ]),
+                ("KONTAKTE & EXPORT", [
+                    ("6", "Kontakte verwalten"),
+                    ("7", "Ledger Import/Export"),
+                ]),
+            ],
+            header=f"Konten im Ledger: {len(ledger.data)} | Kontakte: {len(ledger.contacts)}",
+        )
 
         if choice == "Z":
             break
@@ -4887,16 +4922,16 @@ def _run_link_management(ledger: LinkLedger, env: EnvInfo):
 def _run_contact_management(ledger: LinkLedger):
     """Untermenu: Kontakte verwalten"""
     while True:
-        _cls()
-        _section("KONTAKT-VERWALTUNG")
-        print()
-        print(c(C.CYAN, "  [1] Kontakt hinzufügen"))
-        print(c(C.CYAN, "  [2] Kontakte anzeigen"))
-        print(c(C.CYAN, "  [3] Kontakt bearbeiten"))
-        print(c(C.DIM,  "  [Z] Zurück"))
-        print()
-
-        choice = input(c(C.WHITE, "  Select option: ")).strip().upper()
+        choice = _submenu(
+            "KONTAKT-VERWALTUNG",
+            [
+                (None, [
+                    ("1", "Kontakt hinzufügen"),
+                    ("2", "Kontakte anzeigen"),
+                    ("3", "Kontakt bearbeiten"),
+                ]),
+            ],
+        )
 
         if choice == "Z":
             break
@@ -4959,15 +4994,15 @@ def _run_contact_management(ledger: LinkLedger):
 def _run_ledger_import_export(ledger: LinkLedger):
     """Untermenu: Ledger Import/Export"""
     while True:
-        _cls()
-        _section("LEDGER IMPORT / EXPORT")
-        print()
-        print(c(C.CYAN, "  [1] In CSV exportieren"))
-        print(c(C.CYAN, "  [2] Aus CSV importieren"))
-        print(c(C.DIM,  "  [Z] Zurück"))
-        print()
-
-        choice = input(c(C.WHITE, "  Select option: ")).strip().upper()
+        choice = _submenu(
+            "LEDGER IMPORT / EXPORT",
+            [
+                (None, [
+                    ("1", "In CSV exportieren"),
+                    ("2", "Aus CSV importieren"),
+                ]),
+            ],
+        )
 
         if choice == "Z":
             break
