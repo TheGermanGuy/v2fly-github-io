@@ -4190,70 +4190,86 @@ def _extract_xtream_links(text: str) -> list:
 
 def _input_multi_links(prompt: str = "Links paste (mehrere ok) oder [A] alle aus Datei") -> list:
     """
-    Intelligente Multi-Link Eingabe mit wiederholtem Prompt.
-    Sammelt alle Links solange, bis keine neuen mehr hinzukommen.
+    Intelligente Multi-Link Eingabe - nutzt DATEI-basierte Lösung für Pydroid 3.
+    Problem: input() in Pydroid 3 liest nur erste Zeile bei Block-Paste.
+    Lösung: Temporäre Datei nutzen für mehrzeilige Eingabe.
+
     - [A] = alle aus free_links.txt, free_links_TVonly.txt, vpn_links.txt
-    - Mehrfaches Paste möglich (input wird mehrfach aufgefordert)
-    - Extrahiert automatisch alle gültigen Xtream-Links
+    - [D] = aus links_to_check.txt (Nutzer pastet dort ein)
+    - Beliebiger Text = extrahiert automatisch Xtream-Links
     """
     print()
+    print(c(C.CYAN, f"  {prompt}"))
+    print(c(C.DIM, "  Optionen:"))
+    print(c(C.DIM, "    [A] - Alle aus Output-Dateien"))
+    print(c(C.DIM, "    [D] - Aus links_to_check.txt (erstellt jetzt)"))
+    print(c(C.DIM, "    oder Paste die Links direkt (mehrere ok)"))
+    print()
 
-    all_extracted = []
+    user_input = input(c(C.CYAN, "  → ")).strip()
 
-    while True:
-        if not all_extracted:
-            # Erste Eingabe
-            user_input = input(c(C.CYAN, f"  {prompt}:\n  → ")).strip()
+    # [A] - Alle aus Dateien
+    if user_input.upper() == "A":
+        urls = []
+        for fname in [OUTPUT_FILE, TVONLY_FILE, VPN_FILE]:
+            if os.path.exists(fname):
+                with open(fname, "r", encoding="utf-8") as f:
+                    urls.extend(l.strip() for l in f if l.strip())
+        return urls
 
-            # Prüfe auf [A]
-            if user_input.upper() == "A":
-                urls = []
-                for fname in [OUTPUT_FILE, TVONLY_FILE, VPN_FILE]:
-                    if os.path.exists(fname):
-                        with open(fname, "r", encoding="utf-8") as f:
-                            urls.extend(l.strip() for l in f if l.strip())
-                return urls
+    # [D] - Aus links_to_check.txt
+    if user_input.upper() == "D":
+        temp_file = "links_to_check.txt"
 
-            # Extrahiere Links
-            extracted = _extract_xtream_links(user_input)
-            all_extracted.extend(extracted)
+        # Erstelle Template-Datei
+        if not os.path.exists(temp_file):
+            template = """# Paste deine Links hier (eine pro Zeile):
+# Beispiel:
+# http://host1.com:8080/get.php?username=user1&password=pass1
+# http://host2.com/player_api.php?username=user2&password=pass2
+"""
+            try:
+                with open(temp_file, "w", encoding="utf-8") as f:
+                    f.write(template)
+                print(c(C.GREEN, f"\n  ✓ Datei erstellt: {temp_file}"))
+                print(c(C.YELLOW, f"  ⚠️  Öffne {temp_file} in Editor, paste Links ein, speichern, dann [ENTER]"))
+            except Exception as e:
+                print(c(C.RED, f"\n  ✗ Fehler beim Erstellen: {e}"))
+                return []
 
-            # Falls noch keine Links, frag nach mehr
-            if not extracted:
-                print(c(C.YELLOW, f"  ⚠️  Keine gültigen Links erkannt."))
-                ans = input(c(C.CYAN, "  Weitere Eingabe? [J/n]: ")).strip().upper()
-                if ans in ("", "J"):
-                    continue
-                else:
-                    return []
+        input(c(C.CYAN, "\n  Datei bereit - [ENTER] wenn fertig mit Einfügen: "))
 
-            # Links gefunden - frag ob mehr
-            print(c(C.GREEN, f"  ✓ {len(extracted)} Link(s) erkannt."))
-            ans = input(c(C.CYAN, "  Weitere Links hinzufügen? [j/N]: ")).strip().upper()
-            if ans != "J":
-                return all_extracted
-            # sonst: Schleife weiter für mehr Input
+        # Lese die Datei
+        try:
+            with open(temp_file, "r", encoding="utf-8") as f:
+                file_content = f.read()
 
-        else:
-            # Zusätzliche Eingaben
-            user_input = input(c(C.CYAN, "  Weitere Links oder [ENTER] zum Starten:\n  → ")).strip()
-
-            if not user_input:
-                # Benutzer drückte nur ENTER → Scan starten
-                return all_extracted
-
-            # Extrahiere Links
-            extracted = _extract_xtream_links(user_input)
+            extracted = _extract_xtream_links(file_content)
             if extracted:
-                all_extracted.extend(extracted)
-                print(c(C.GREEN, f"  ✓ {len(extracted)} weitere Link(s) hinzugefügt (Summe: {len(all_extracted)})"))
+                print(c(C.GREEN, f"\n  ✓ {len(extracted)} Link(s) aus {temp_file} extrahiert."))
             else:
-                print(c(C.YELLOW, "  ⚠️  Keine neuen Links in dieser Zeile."))
+                print(c(C.RED, f"\n  ✗ Keine gültigen Links in {temp_file} gefunden."))
 
-            # Frag ob mehr
-            ans = input(c(C.CYAN, "  Mehr Links? [j/N]: ")).strip().upper()
-            if ans != "J":
-                return all_extracted
+            return extracted
+        except Exception as e:
+            print(c(C.RED, f"\n  ✗ Fehler beim Lesen: {e}"))
+            return []
+
+    # Direkter Paste (Fallback für Single-Line)
+    extracted = _extract_xtream_links(user_input)
+
+    if extracted:
+        print(c(C.GREEN, f"\n  ✓ {len(extracted)} Link(s) extrahiert."))
+        return extracted
+
+    # Kein Input/Fehler
+    if user_input:
+        print(c(C.YELLOW, f"\n  ⚠️  Keine gültigen Links erkannt."))
+    else:
+        print(c(C.YELLOW, f"\n  ⚠️  Keine Eingabe."))
+
+    return []
+
 
 
 class LinkLedger:
