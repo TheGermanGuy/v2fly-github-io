@@ -4160,21 +4160,32 @@ LEDGER_FILE = "link_ledger.json"  # Speichert user:pass → Zuweisungen
 def _extract_xtream_links(text: str) -> list:
     """
     Extrahiert alle gültigen Xtream-Links aus beliebigem Text.
-    Ignoriert Zeilenumbrüche, Spaces, und andere Inhalte.
-    Nutzt Regex um Links mit player_api.php oder get.php zu finden.
+    Verarbeitet mehrzeilige Eingaben (eine URL pro Zeile oder gemischt).
+    Ignoriert nicht-URL Text, Spaces, und andere Inhalte.
     """
     if not text or not isinstance(text, str):
         return []
 
-    # Regex für Xtream-Links: http(s)://host:port/... mit username+password
-    pattern = r'https?://[^\s]+(?:player_api\.php|get\.php)[^\s]*[?&]username=[^&\s]+[&]password=[^&\s]+'
+    links = []
 
-    matches = re.findall(pattern, text, re.IGNORECASE)
+    # Split nach Newlines und verarbeite jede Zeile
+    for line in text.split('\n'):
+        line = line.strip()
+        if not line:
+            continue
 
-    # Dedupliziere (falls jemand mehrmals denselben Link pastet)
-    unique_links = list(dict.fromkeys(matches))
+        # Regex für Xtream-Links: http(s)://host:port/... mit username+password
+        # Suche nach vollständigen Links die mit get.php oder player_api.php enden
+        pattern = r'https?://[^\s\'"<>]+?(?:player_api\.php|get\.php)[^\s\'"<>]*[?&]username=[^&\s\'"<>]+[&]password=[^&\s\'"<>]+'
 
-    return unique_links
+        matches = re.findall(pattern, line, re.IGNORECASE)
+        for match in matches:
+            # Entferne möglicherweise angehängte Zeichen
+            match = match.rstrip('.,;:!?')
+            if match not in links:  # Verhindere Duplikate
+                links.append(match)
+
+    return links
 
 
 def _input_multi_links(prompt: str = "Links paste (mehrere ok) oder [A] alle aus Datei") -> list:
@@ -4182,10 +4193,15 @@ def _input_multi_links(prompt: str = "Links paste (mehrere ok) oder [A] alle aus
     Interaktive Eingabe für mehrere Links.
     - [A] = alle aus free_links.txt, free_links_TVonly.txt, vpn_links.txt
     - Beliebiger Text = extrahiert automatisch Xtream-Links
+    - Akzeptiert mehrzeilige Eingabe (Ctrl+D zum Beenden auf Linux/Pydroid)
     """
     print()
+    print(c(C.DIM, "  [Eingabe beenden mit Ctrl+D (Linux) oder Ctrl+Z+Enter (Windows)]"))
+
+    lines = []
     user_input = input(c(C.CYAN, f"  {prompt}:\n  → ")).strip()
 
+    # Prüfe auf [A]
     if user_input.upper() == "A":
         urls = []
         for fname in [OUTPUT_FILE, TVONLY_FILE, VPN_FILE]:
@@ -4193,10 +4209,27 @@ def _input_multi_links(prompt: str = "Links paste (mehrere ok) oder [A] alle aus
                 with open(fname, "r", encoding="utf-8") as f:
                     urls.extend(l.strip() for l in f if l.strip())
         return urls
-    else:
-        # Extrahiere Links aus beliebigem Input
-        extracted = _extract_xtream_links(user_input)
-        return extracted
+
+    # Wenn nur eine Zeile (sofort Eingabe), extrahiere Links
+    extracted = _extract_xtream_links(user_input)
+
+    # Falls keine Links in Zeile 1, erlaube mehrzeilige Eingabe
+    if not extracted and user_input:
+        print(c(C.YELLOW, "  ⚠️  Keine vollständigen Links erkannt. Gib alle Links ein (eine pro Zeile):"))
+        try:
+            while True:
+                line = input("  → ").strip()
+                if line:
+                    lines.append(line)
+                else:
+                    break
+        except EOFError:
+            pass  # Benutzer hat Eingabe beendet (Ctrl+D)
+
+        combined = user_input + "\n" + "\n".join(lines)
+        extracted = _extract_xtream_links(combined)
+
+    return extracted
 
 
 class LinkLedger:
