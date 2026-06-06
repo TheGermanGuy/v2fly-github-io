@@ -4235,12 +4235,8 @@ def _input_multi_links_for_management() -> list:
     return extracted
 
 
-
-    """
-    Extrahiert alle gültigen Xtream-Links aus beliebigem Text.
-    Verarbeitet mehrzeilige Eingaben (eine URL pro Zeile oder gemischt).
-    Ignoriert nicht-URL Text, Spaces, und andere Inhalte.
-    """
+def _extract_xtream_links(text):
+    """Extrahiert alle gültigen Xtream-Links aus beliebigem Text."""
     if not text or not isinstance(text, str):
         return []
 
@@ -4253,7 +4249,6 @@ def _input_multi_links_for_management() -> list:
             continue
 
         # Regex für Xtream-Links: http(s)://host:port/... mit username+password
-        # Suche nach vollständigen Links die mit get.php oder player_api.php enden
         pattern = r'https?://[^\s\'"<>]+?(?:player_api\.php|get\.php)[^\s\'"<>]*[?&]username=[^&\s\'"<>]+[&]password=[^&\s\'"<>]+'
 
         matches = re.findall(pattern, line, re.IGNORECASE)
