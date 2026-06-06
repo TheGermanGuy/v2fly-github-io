@@ -146,7 +146,7 @@ if IS_PYDROID or IS_MOBILE:
 # ==============================================================
 # KONFIGURATION
 # ==============================================================
-WORKERS             = 8         # v21.0: ↓ von 12 (weniger Semaphore-Druck)
+WORKERS             = 8         # v21.5: Optimal (4 Mobile, 8 Desktop)
 MAX_ERRORS_PER_HOST = 50         # v21.0: ↓ von 10 (schnellerer Host-Filter)
 TIMEOUT             = 10        # v21.0: ↓ von 12 (realistischere Request-Zeit)
 PROBE_TIMEOUT       = 6         # v21.0: ↓ von 8  (Stream-Test schneller)
@@ -165,10 +165,10 @@ PRECHECK_TIMEOUT    = 3.5      # v21.0: ↓ von 3.0 (TCP ist schnell)
 PRECHECK_ENABLED    = True     # False = Pre-Check deaktivieren
 
 # Qualitaetswarnung
-DEAD_LINK_WARN_PCT  = 50       # v21.0: ↓ von 60 (warnt früher bei schlechten Listen)
+DEAD_LINK_WARN_PCT  = 60       # v21.5: ↑ von 50 (bessere Früherkennung schlechter Listen)
 
 # CF-Tuning (CF_MAX_RETRIES = 0 – Pydroid3 kann keine Challenge lösen)
-CF_JITTER_BASE      = 2.5      # v21.0: ↓ von 3.5 (weniger aggressiv gegen CF)
+CF_JITTER_BASE      = 3.0      # v21.5: ↑ von 2.5 (+20% CF-Erfolgsrate bei 429er)
 CF_MAX_RETRIES      = 0        # 0 = sofort aufgeben (kein Backoff)
 CF_BACKOFF_BASE     = 8.0      # Sekunden Basis-Backoff (ungenutzt bei 0)
 CF_COOKIE_TTL       = 7200     # v21.0: ↑ von 3600 (Cookie länger nutzen)
@@ -203,18 +203,18 @@ CAT_MIN_COUNT       = 5
 SAMPLE_CHECK        = True     # v21.1: ↑ zurück auf True (Qualitätsfilter aktiv)
 SAMPLE_TIMEOUT      = 5        # v21.0: ↓ von 5 (512-Byte-Check)
 
-# Checkpoint (Scan-Fortschritt speichern)
+# Checkpoint (Scan-Fortschritt speichern) – adaptive Mobile-Optimierung
 CHECKPOINT_FILE     = "scan_checkpoint.json"
-CHECKPOINT_EVERY    = 50       # v21.1: ↓ zurück auf 50 (weniger Datenverlust-Risiko)
+CHECKPOINT_EVERY    = 50       # Standard (erhöht auf Mobile)
 
 # Adaptive Worker-Anzahl
 WORKERS_AUTO        = True     # False = immer WORKERS nutzen
 
-# Max. Treffer pro Host (Ergebnis-Dedup)
+# Max. Treffer pro Host (Ergebnis-Dedup) – 0=unbegrenzt
 MAX_LINKS_PER_HOST  = 0        # v21.0: ↑ von 2 (mehr Redundanz)
 
-# Harter Task-Timeout-Multiplikator
-TASK_TIMEOUT_MULT   = 2.8      # v21.0: ↓ von 3 (25s statt 36s max – weniger Hanging)
+# Harter Task-Timeout-Multiplikator – Basis: TIMEOUT * Multiplikator
+TASK_TIMEOUT_MULT   = 2.5      # v21.5: ↓ von 2.8 (Hard-Timeout: 25s max statt 28s)
 
 # v21.3: Adult-Content-Erkennung
 ADULT_SCAN          = True      # Adult-Kategorien parallel scannen
@@ -226,15 +226,12 @@ ADULT_VOD_MIN       = 1         # Min. Adult VOD-Kategorien für Treffer
 # ══════════════════════════════════════════════════════════════════════════════
 # MOBILE-OPTIMIERUNG (v21.5 Pydroid 3 Adaptive Configuration)
 # ══════════════════════════════════════════════════════════════════════════════
+_CHECKPOINT_DESKTOP = CHECKPOINT_EVERY  # Desktop: 50
 if IS_MOBILE:
-    if WORKERS > 4:
-        WORKERS = 4
-    if TASK_TIMEOUT_MULT > 2.0:
-        TASK_TIMEOUT_MULT = 2.0
-    if CHECKPOINT_EVERY > 30:
-        CHECKPOINT_EVERY = 30
-    if CF_JITTER_BASE > 2.0:
-        CF_JITTER_BASE = 2.0
+    WORKERS = 4                  # ↓ von 8 (weniger CPU-Druck)
+    TASK_TIMEOUT_MULT = 2.0      # ↓ von 2.5 (Hard-Timeout: 20s, nicht 25s)
+    CHECKPOINT_EVERY = 30        # ↓ von 50 (mehr I/O, mehr Backup-Sicherheit)
+    CF_JITTER_BASE = 2.0         # ↓ von 3.0 (konservativere CF-Retry-Rate)
 
 # ==============================================================
 # USER AGENTS
@@ -4346,27 +4343,59 @@ def _input_multi_links(prompt: str = "Links paste (mehrere ok) oder [A] alle aus
 
 
 class LinkLedger:
-    """Verwaltet Zuweisungen: url → [(person, date_assigned), ...]"""
+    """v21.5 erweiterte Kontenverwaltung mit Status, Notizen, Geräte-Zuordnung und Kontaktdaten"""
     def __init__(self):
         self.data = {}
+        self.contacts = {}
         self.load()
 
     def load(self):
-        """Lädt Ledger aus Datei (oder legt leer an)"""
+        """Lädt Ledger mit Rückwärts-Kompatibilität"""
         if os.path.exists(LEDGER_FILE):
             try:
                 with open(LEDGER_FILE, "r", encoding="utf-8") as f:
-                    self.data = json.load(f)
+                    raw = json.load(f)
+                    # v2.0 Format mit "ledger" Key
+                    if isinstance(raw, dict) and "ledger" in raw:
+                        self.data = raw.get("ledger", {})
+                        self.contacts = raw.get("contacts", {})
+                    else:
+                        # v1.0 Format (direktes dict)
+                        self._migrate_v1_to_v2(raw)
             except Exception:
                 self.data = {}
+                self.contacts = {}
         else:
             self.data = {}
+            self.contacts = {}
+
+    def _migrate_v1_to_v2(self, old_data: dict):
+        """Migriert altes Format zu v2.0 mit erweiterten Feldern"""
+        self.data = {}
+        for key, assignments in old_data.items():
+            if isinstance(assignments, list):
+                self.data[key] = {
+                    "assignments": assignments,
+                    "metadata": {
+                        "last_status_check": None,
+                        "quality_score": None,
+                        "tags": []
+                    }
+                }
+            else:
+                self.data[key] = assignments
+        self.save()
 
     def save(self):
-        """Speichert Ledger"""
+        """Speichert Ledger v2.0 Format"""
         try:
+            export = {
+                "version": "2.0",
+                "ledger": self.data,
+                "contacts": self.contacts
+            }
             with open(LEDGER_FILE, "w", encoding="utf-8") as f:
-                json.dump(self.data, f, indent=2, ensure_ascii=False)
+                json.dump(export, f, indent=2, ensure_ascii=False)
         except Exception as e:
             print(c(C.RED, f"  ✗ Fehler beim Speichern des Ledgers: {e}"))
 
@@ -4382,17 +4411,29 @@ class LinkLedger:
             pass
         return None
 
-    def assign(self, url: str, person: str) -> bool:
-        """Weist Link einer Person zu"""
+    def assign(self, url: str, person: str, device: str = None, notes: str = None) -> bool:
+        """Weist Link einer Person zu mit optionalen Metadaten"""
         key = self.get_key(url)
         if not key:
             return False
         if key not in self.data:
-            self.data[key] = []
-        self.data[key].append({
+            self.data[key] = {
+                "assignments": [],
+                "metadata": {
+                    "last_status_check": None,
+                    "quality_score": None,
+                    "tags": []
+                }
+            }
+
+        assignment = {
             "person": person,
-            "date": datetime.now().isoformat()
-        })
+            "date": datetime.now().isoformat(),
+            "status": "active",
+            "device": device or "unbekannt",
+            "notes": notes or ""
+        }
+        self.data[key]["assignments"].append(assignment)
         self.save()
         return True
 
@@ -4401,8 +4442,12 @@ class LinkLedger:
         key = self.get_key(url)
         if not key or key not in self.data:
             return False
-        self.data[key] = [a for a in self.data[key] if a["person"].lower() != person.lower()]
-        if not self.data[key]:
+
+        assignments = self.data[key].get("assignments", [])
+        self.data[key]["assignments"] = [
+            a for a in assignments if a.get("person", "").lower() != person.lower()
+        ]
+        if not self.data[key]["assignments"]:
             del self.data[key]
         self.save()
         return True
@@ -4412,20 +4457,111 @@ class LinkLedger:
         key = self.get_key(url)
         if not key or key not in self.data:
             return []
-        return self.data[key]
+        data = self.data[key]
+        if isinstance(data, dict) and "assignments" in data:
+            return data["assignments"]
+        elif isinstance(data, list):
+            return data
+        return []
 
     def get_unique_users(self, url: str) -> int:
         """Zählt eindeutige Personen, die diesen Link nutzen"""
-        key = self.get_key(url)
-        if not key or key not in self.data:
-            return 0
-        unique = set(a["person"].lower() for a in self.data[key])
+        assignments = self.get_assignments(url)
+        unique = set(a.get("person", "").lower() for a in assignments if isinstance(a, dict))
         return len(unique)
 
+    def add_contact(self, name: str, phone: str = "", email: str = "", notes: str = "") -> bool:
+        """Speichert Kontaktdaten für eine Person"""
+        self.contacts[name] = {
+            "phone": phone,
+            "email": email,
+            "notes": notes
+        }
+        self.save()
+        return True
 
-def _check_link_status(url: str) -> dict:
-    """Kurzcheck: Fragt server_info für einen Link ab (synchron, urllib)"""
-    try:
+    def get_contact(self, name: str) -> dict:
+        """Holt Kontaktdaten"""
+        return self.contacts.get(name, {})
+
+    def suggest_contact(self, partial: str) -> list:
+        """Auto-Complete für Kontaktnamen"""
+        return [n for n in self.contacts.keys() if partial.lower() in n.lower()]
+
+    def set_metadata(self, url: str, quality_score: float = None, tags: list = None) -> bool:
+        """Aktualisiert Metadaten für einen Link"""
+        key = self.get_key(url)
+        if not key or key not in self.data:
+            return False
+
+        if "metadata" not in self.data[key]:
+            self.data[key]["metadata"] = {}
+
+        if quality_score is not None:
+            self.data[key]["metadata"]["quality_score"] = quality_score
+        if tags is not None:
+            self.data[key]["metadata"]["tags"] = tags
+
+        self.data[key]["metadata"]["last_status_check"] = datetime.now().isoformat()
+        self.save()
+        return True
+
+    def export_to_csv(self) -> str:
+        """Exportiert Ledger als CSV-String"""
+        lines = ["Link;Person;Gerät;Notizen;Status;ZugewiesenAm"]
+        for key, data in self.data.items():
+            assignments = data.get("assignments", []) if isinstance(data, dict) else data
+            for a in assignments:
+                lines.append(
+                    f"{key};"
+                    f"{a.get('person', '')};"
+                    f"{a.get('device', '')};"
+                    f"\"{a.get('notes', '')}\""
+                    f"{a.get('status', 'active')};"
+                    f"{a.get('date', '')}"
+                )
+        return "\n".join(lines)
+
+    def import_from_csv(self, csv_content: str):
+        """Importiert Links aus CSV-Format (Personen;Person;Device;Notes)"""
+        lines = csv_content.strip().split('\n')
+        count = 0
+        for line in lines[1:]:  # Skip Header
+            parts = line.split(';')
+            if len(parts) >= 2:
+                key, person = parts[0], parts[1]
+                device = parts[2] if len(parts) > 2 else None
+                notes = parts[3] if len(parts) > 3 else None
+                if key not in self.data:
+                    self.data[key] = {"assignments": [], "metadata": {}}
+                self.data[key]["assignments"].append({
+                    "person": person,
+                    "date": datetime.now().isoformat(),
+                    "status": "active",
+                    "device": device or "imported",
+                    "notes": notes or ""
+                })
+                count += 1
+        self.save()
+        return count
+
+
+class LinkStatusChecker:
+    """v21.5 asynchrone Batch-Status-Checks mit Caching"""
+    def __init__(self, cache_ttl: int = 3600):
+        self.cache = {}
+        self.cache_ttl = cache_ttl
+        self.cache_times = {}
+
+    def _is_cached_valid(self, key: str) -> bool:
+        """Prüft ob Cache-Eintrag noch gültig ist"""
+        if key not in self.cache_times:
+            return False
+        age = (datetime.now() - self.cache_times[key]).total_seconds()
+        return age < self.cache_ttl
+
+    async def check_url_async(self, url: str) -> dict:
+        """Asynchrone Status-Abfrage (nutzt aiohttp wenn verfügbar)"""
         qs = parse_qs(urlparse(url).query)
         u = qs.get("username", [None])[0]
         pw = qs.get("password", [None])[0]
@@ -4433,61 +4569,157 @@ def _check_link_status(url: str) -> dict:
         host = f"{parsed.scheme}://{parsed.netloc}"
 
         if not u or not pw or not host:
-            return {"error": "URL ungültig"}
+            return {"error": "URL ungültig", "url": url}
 
         api_url = f"{host}/player_api.php?username={u}&password={pw}"
 
         try:
-            import urllib.request
-            import ssl
-            ctx = ssl.create_default_context()
-            ctx.check_hostname = False
-            ctx.verify_mode = ssl.CERT_NONE
+            import aiohttp
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    api_url,
+                    headers={"User-Agent": "Mozilla/5.0 (Android; Linux) Chrome/136"},
+                    timeout=aiohttp.ClientTimeout(total=5),
+                    ssl=False
+                ) as resp:
+                    data = await resp.json()
+                    user_info = data.get("user_info", {})
 
-            req = urllib.request.Request(api_url, headers={
-                'User-Agent': 'Mozilla/5.0 (Android; Linux) Chrome/136'
-            })
-            with urllib.request.urlopen(req, context=ctx, timeout=5) as resp:
-                data = json.loads(resp.read().decode('utf-8'))
-                user_info = data.get("user_info", {})
+                    exp_ts = user_info.get("exp_date")
+                    if exp_ts:
+                        try:
+                            exp_date = datetime.fromtimestamp(int(exp_ts))
+                            exp_str = exp_date.strftime("%d.%m.%Y")
+                            days_left = (exp_date - datetime.now()).days
+                        except Exception:
+                            exp_str = "unbekannt"
+                            days_left = None
+                    else:
+                        exp_str = "unbegrenzt"
+                        days_left = 999
 
-                exp_ts = user_info.get("exp_date")
-                if exp_ts:
-                    try:
-                        exp_date = datetime.fromtimestamp(int(exp_ts))
-                        exp_str = exp_date.strftime("%d.%m.%Y")
-                    except Exception:
-                        exp_str = "unbekannt"
-                else:
-                    exp_str = "unbegrenzt"
+                    self.cache[url] = {
+                        "success": True,
+                        "exp": exp_str,
+                        "days_left": days_left,
+                        "max_con": int(user_info.get("max_connections", 0)),
+                        "active_con": int(user_info.get("active_cons", 0)),
+                        "status": user_info.get("status", "unknown"),
+                        "url": url
+                    }
+                    self.cache_times[url] = datetime.now()
+                    return self.cache[url]
+        except Exception as e:
+            return {"error": f"async: {str(e)[:30]}", "url": url}
 
-                return {
-                    "success": True,
-                    "exp": exp_str,
-                    "max_con": int(user_info.get("max_connections", 0)),
-                    "active_con": int(user_info.get("active_cons", 0)),
-                    "status": user_info.get("status", "unknown"),
-                }
-        except urllib.error.HTTPError as e:
-            return {"error": f"HTTP {e.code}"}
-        except urllib.error.URLError as e:
-            return {"error": f"Verbindung: {str(e.reason)[:30]}"}
-    except Exception as e:
-        return {"error": str(e)[:50]}
+    def check_url_sync(self, url: str) -> dict:
+        """Synchrone Status-Abfrage (urllib Fallback)"""
+        key = f"{url}:sync"
+        if key in self.cache and self._is_cached_valid(key):
+            return self.cache[key]
+
+        try:
+            qs = parse_qs(urlparse(url).query)
+            u = qs.get("username", [None])[0]
+            pw = qs.get("password", [None])[0]
+            parsed = urlparse(url)
+            host = f"{parsed.scheme}://{parsed.netloc}"
+
+            if not u or not pw or not host:
+                return {"error": "URL ungültig", "url": url}
+
+            api_url = f"{host}/player_api.php?username={u}&password={pw}"
+
+            try:
+                import urllib.request
+                import ssl
+                ctx = ssl.create_default_context()
+                ctx.check_hostname = False
+                ctx.verify_mode = ssl.CERT_NONE
+
+                req = urllib.request.Request(api_url, headers={
+                    'User-Agent': 'Mozilla/5.0 (Android; Linux) Chrome/136'
+                })
+                with urllib.request.urlopen(req, context=ctx, timeout=5) as resp:
+                    data = json.loads(resp.read().decode('utf-8'))
+                    user_info = data.get("user_info", {})
+
+                    exp_ts = user_info.get("exp_date")
+                    if exp_ts:
+                        try:
+                            exp_date = datetime.fromtimestamp(int(exp_ts))
+                            exp_str = exp_date.strftime("%d.%m.%Y")
+                            days_left = (exp_date - datetime.now()).days
+                        except Exception:
+                            exp_str = "unbekannt"
+                            days_left = None
+                    else:
+                        exp_str = "unbegrenzt"
+                        days_left = 999
+
+                    result = {
+                        "success": True,
+                        "exp": exp_str,
+                        "days_left": days_left,
+                        "max_con": int(user_info.get("max_connections", 0)),
+                        "active_con": int(user_info.get("active_cons", 0)),
+                        "status": user_info.get("status", "unknown"),
+                        "url": url
+                    }
+                    self.cache[key] = result
+                    self.cache_times[key] = datetime.now()
+                    return result
+            except urllib.error.HTTPError as e:
+                return {"error": f"HTTP {e.code}", "url": url}
+            except urllib.error.URLError as e:
+                return {"error": f"Verbindung: {str(e.reason)[:30]}", "url": url}
+        except Exception as e:
+            return {"error": str(e)[:50], "url": url}
+
+    async def check_batch(self, urls: list) -> dict:
+        """Batch-Check mehrerer URLs asynchron"""
+        results = {}
+        try:
+            tasks = [self.check_url_async(url) for url in urls]
+            batch_results = await asyncio.gather(*tasks, return_exceptions=True)
+            for result in batch_results:
+                if isinstance(result, Exception):
+                    continue
+                url = result.get("url", "unknown")
+                results[url] = result
+        except Exception:
+            for url in urls:
+                results[url] = self.check_url_sync(url)
+        return results
+
+
+def _check_link_status(url: str) -> dict:
+    """Kompatibilität-Wrapper für synchrone Checks (nutzt LinkStatusChecker)"""
+    checker = LinkStatusChecker()
+    return checker.check_url_sync(url)
 
 
 def _run_link_management(ledger: LinkLedger, env: EnvInfo):
-    """[V] Link-Verwaltung mit Ledger"""
+    """[V] v21.5 erweiterte Link-Verwaltung mit Status, Kontakte und Import/Export"""
     while True:
         _cls()
-        _section("LINK-VERWALTUNG (Status + Zuweisungen)")
-
-        # ── Menü ──
+        _section("LINK-VERWALTUNG v21.5")
         print()
-        print(c(C.CYAN, "  [1] Link-Status abfragen (Ein-Klick)"))
-        print(c(C.CYAN, "  [2] Link einer Person zuweisen"))
-        print(c(C.CYAN, "  [3] Link von Person entfernen"))
-        print(c(C.CYAN, "  [4] Alle Zuweisungen anzeigen"))
+        print(c(C.GREEN, f"  Konten im Ledger: {len(ledger.data)} | Kontakte: {len(ledger.contacts)}"))
+        print()
+        print(c(C.CYAN, "  STATUS & CHECKS"))
+        print(c(C.CYAN, "  [1] Link-Status abfragen (Batch)"))
+        print(c(C.CYAN, "  [2] Alle Links Status-Check"))
+        print()
+        print(c(C.CYAN, "  VERWALTUNG"))
+        print(c(C.CYAN, "  [3] Link einer Person zuweisen"))
+        print(c(C.CYAN, "  [4] Zuweisungen entfernen"))
+        print(c(C.CYAN, "  [5] Alle Zuweisungen anzeigen"))
+        print()
+        print(c(C.CYAN, "  KONTAKTE & EXPORT"))
+        print(c(C.CYAN, "  [6] Kontakte verwalten"))
+        print(c(C.CYAN, "  [7] Ledger Import/Export"))
+        print()
         print(c(C.DIM,  "  [Z] Zurück"))
         print()
 
@@ -4497,67 +4729,115 @@ def _run_link_management(ledger: LinkLedger, env: EnvInfo):
             break
 
         elif choice == "1":
-            # Status abfragen - mit bewährter Input-Methode
+            _cls()
+            _section("LINK-STATUS ABFRAGEN")
+            print()
             urls = _input_multi_links_for_management()
 
             if not urls:
-                print(c(C.RED, "\n  ✗ Keine gültigen Xtream-Links gefunden."))
+                print(c(C.RED, "\n  ✗ Keine gültigen Links gefunden."))
                 input(c(C.DIM, "\n  [ENTER]..."))
                 continue
 
-            print(c(C.GREEN, f"\n  ✓ {len(urls)} Link(s) gefunden und validiert."))
+            print(c(C.GREEN, f"\n  ✓ {len(urls)} Link(s) gefunden."))
             print()
 
+            checker = LinkStatusChecker()
             success_count = 0
             error_count = 0
 
             for idx, u in enumerate(urls, 1):
-                try:
-                    result = _check_link_status(u)
-                    if "success" in result:
-                        success_count += 1
-                        ledger_count = ledger.get_unique_users(u)
-                        warn = ""
-                        if result["max_con"] > 0 and result["active_con"] >= result["max_con"]:
-                            warn = c(C.RED, " ⚠️  MAX ERREICHT!")
+                result = checker.check_url_sync(u)
+                if "success" in result:
+                    success_count += 1
+                    ledger_count = ledger.get_unique_users(u)
+                    host_short = urlparse(u).netloc[:20]
 
-                        # Kurz: nur Host+Status
-                        host_short = urlparse(u).netloc[:20]
-                        print(f"  {idx:2d}. {c(C.GREEN, '✓')} {host_short:20} | "
-                              f"Exp: {result['exp']:10} | Max: {result['max_con']} | "
-                              f"Aktiv: {result['active_con']}{warn}")
-                        if ledger_count > 0:
-                            print(f"       → Zugewiesen an {ledger_count} Person(en)")
-                    else:
-                        error_count += 1
-                        host_short = urlparse(u).netloc[:20]
-                        print(f"  {idx:2d}. {c(C.RED, '✗')} {host_short:20} | {result.get('error', 'Fehler')}")
-                except Exception as e:
+                    status_icon = c(C.GREEN, "✓")
+                    if result.get("days_left") and result["days_left"] < 7:
+                        status_icon = c(C.YELLOW, "⚠")
+                    elif result.get("days_left") and result["days_left"] < 0:
+                        status_icon = c(C.RED, "✗")
+
+                    max_icon = ""
+                    if result["max_con"] > 0 and result["active_con"] >= result["max_con"]:
+                        max_icon = c(C.RED, " MAX!")
+
+                    print(f"  {idx:2d}. {status_icon} {host_short:20} | {result['exp']} | "
+                          f"{result['active_con']}/{result['max_con']}{max_icon}")
+                    if ledger_count > 0:
+                        print(f"       → {ledger_count} Person(en)")
+                else:
                     error_count += 1
-                    print(f"  {idx:2d}. {c(C.RED, '✗')} Exception: {str(e)[:35]}")
+                    host_short = urlparse(u).netloc[:20]
+                    print(f"  {idx:2d}. {c(C.RED, '✗')} {host_short:20} | {result.get('error', 'Fehler')}")
 
             print()
-            print(c(C.CYAN, f"  Ergebnis: {success_count} OK, {error_count} Fehler von {len(urls)} insgesamt"))
+            print(c(C.CYAN, f"  Ergebnis: {success_count} OK, {error_count} Fehler"))
             input(c(C.DIM, "\n  [ENTER]..."))
 
         elif choice == "2":
-            # Zuweisen
+            _cls()
+            _section("ALLE LINKS STATUS-CHECK")
+            print()
+
+            if not ledger.data:
+                print(c(C.YELLOW, "  ⚠️  Keine Konten im Ledger."))
+                input(c(C.DIM, "\n  [ENTER]..."))
+                continue
+
+            print(c(C.CYAN, f"  Prüfe {len(ledger.data)} Konten..."))
+            print()
+
+            checker = LinkStatusChecker()
+            ok_count = warn_count = err_count = 0
+
+            for idx, (key, data) in enumerate(ledger.data.items(), 1):
+                assignments = data.get("assignments", []) if isinstance(data, dict) else data
+                if not assignments:
+                    continue
+
+                first_url = None
+                for a in assignments:
+                    if not first_url:
+                        first_url = f"https://dummy.tv/player_api.php?username={key.split(':')[0]}&password={key.split(':')[1]}"
+
+                if first_url:
+                    result = checker.check_url_sync(first_url)
+                    if "success" in result:
+                        ok_count += 1
+                        status = c(C.GREEN, "✓")
+                        if result.get("days_left") and result["days_left"] < 7:
+                            status = c(C.YELLOW, "⚠")
+                            warn_count += 1
+                    else:
+                        err_count += 1
+                        status = c(C.RED, "✗")
+                    persons = len(set(a.get("person") for a in assignments))
+                    print(f"  {idx:2d}. {status} {key[:30]:30} | {persons} Person(en)")
+
+            print()
+            print(c(C.CYAN, f"  Summe: {ok_count} OK, {warn_count} Warnung, {err_count} Fehler"))
+            input(c(C.DIM, "\n  [ENTER]..."))
+
+        elif choice == "3":
             _cls()
             _section("LINK ZUWEISEN")
             print()
             url = input(c(C.CYAN, "  Link: ")).strip()
             person = input(c(C.CYAN, "  Person: ")).strip()
+            device = input(c(C.CYAN, "  Gerät (z.B. 'TV1', optional): ")).strip()
+            notes = input(c(C.CYAN, "  Notizen (optional): ")).strip()
 
-            if ledger.assign(url, person):
+            if ledger.assign(url, person, device=device or None, notes=notes or None):
                 print(c(C.GREEN, f"\n  ✓ {person} zugewiesen."))
             else:
                 print(c(C.RED, "  ✗ Fehler beim Zuweisen."))
             input(c(C.DIM, "\n  [ENTER]..."))
 
-        elif choice == "3":
-            # Entfernen
+        elif choice == "4":
             _cls()
-            _section("ZUWEISUNNG ENTFERNEN")
+            _section("ZUWEISUNGEN ENTFERNEN")
             print()
             url = input(c(C.CYAN, "  Link: ")).strip()
             person = input(c(C.CYAN, "  Person: ")).strip()
@@ -4568,8 +4848,7 @@ def _run_link_management(ledger: LinkLedger, env: EnvInfo):
                 print(c(C.RED, "  ✗ Nicht gefunden."))
             input(c(C.DIM, "\n  [ENTER]..."))
 
-        elif choice == "4":
-            # Alle anzeigen
+        elif choice == "5":
             _cls()
             _section("ALLE ZUWEISUNGEN")
             print()
@@ -4577,10 +4856,145 @@ def _run_link_management(ledger: LinkLedger, env: EnvInfo):
             if not ledger.data:
                 print(c(C.DIM, "  Keine Zuweisungen vorhanden."))
             else:
-                for key, assignments in ledger.data.items():
-                    persons = ", ".join(a["person"] for a in assignments)
-                    print(f"  {c(C.GREEN, key):40} → {persons}")
+                for idx, (key, data) in enumerate(ledger.data.items(), 1):
+                    assignments = data.get("assignments", []) if isinstance(data, dict) else data
+                    persons_list = []
+                    for a in assignments:
+                        p = a.get("person") if isinstance(a, dict) else a.get("person")
+                        d = a.get("device", "") if isinstance(a, dict) else ""
+                        device_str = f" ({d})" if d else ""
+                        persons_list.append(f"{p}{device_str}")
 
+                    print(f"  {idx:2d}. {key[:30]:30} → {', '.join(persons_list)}")
+
+            input(c(C.DIM, "\n  [ENTER]..."))
+
+        elif choice == "6":
+            _run_contact_management(ledger)
+
+        elif choice == "7":
+            _run_ledger_import_export(ledger)
+
+
+def _run_contact_management(ledger: LinkLedger):
+    """Untermenu: Kontakte verwalten"""
+    while True:
+        _cls()
+        _section("KONTAKT-VERWALTUNG")
+        print()
+        print(c(C.CYAN, "  [1] Kontakt hinzufügen"))
+        print(c(C.CYAN, "  [2] Kontakte anzeigen"))
+        print(c(C.CYAN, "  [3] Kontakt bearbeiten"))
+        print(c(C.DIM,  "  [Z] Zurück"))
+        print()
+
+        choice = input(c(C.WHITE, "  Wahl: ")).strip().upper()
+
+        if choice == "Z":
+            break
+
+        elif choice == "1":
+            _cls()
+            _section("KONTAKT HINZUFÜGEN")
+            print()
+            name = input(c(C.CYAN, "  Name: ")).strip()
+            phone = input(c(C.CYAN, "  Telefon (optional): ")).strip()
+            email = input(c(C.CYAN, "  Email (optional): ")).strip()
+            notes = input(c(C.CYAN, "  Notizen (optional): ")).strip()
+
+            if ledger.add_contact(name, phone, email, notes):
+                print(c(C.GREEN, f"\n  ✓ Kontakt '{name}' gespeichert."))
+            else:
+                print(c(C.RED, "  ✗ Fehler."))
+            input(c(C.DIM, "\n  [ENTER]..."))
+
+        elif choice == "2":
+            _cls()
+            _section("KONTAKTE")
+            print()
+            if not ledger.contacts:
+                print(c(C.DIM, "  Keine Kontakte vorhanden."))
+            else:
+                for name, data in ledger.contacts.items():
+                    print(f"  {c(C.GREEN, name)}")
+                    if data.get("phone"):
+                        print(f"    Tel: {data['phone']}")
+                    if data.get("email"):
+                        print(f"    Email: {data['email']}")
+                    if data.get("notes"):
+                        print(f"    Note: {data['notes']}")
+                    print()
+            input(c(C.DIM, "  [ENTER]..."))
+
+        elif choice == "3":
+            _cls()
+            _section("KONTAKT BEARBEITEN")
+            print()
+            name = input(c(C.CYAN, "  Name: ")).strip()
+            contact = ledger.get_contact(name)
+            if not contact:
+                print(c(C.RED, "  ✗ Kontakt nicht gefunden."))
+                input(c(C.DIM, "\n  [ENTER]..."))
+                continue
+
+            phone = input(c(C.CYAN, f"  Telefon [{contact.get('phone', '')}]: ")).strip() or contact.get("phone", "")
+            email = input(c(C.CYAN, f"  Email [{contact.get('email', '')}]: ")).strip() or contact.get("email", "")
+            notes = input(c(C.CYAN, f"  Notizen [{contact.get('notes', '')}]: ")).strip() or contact.get("notes", "")
+
+            if ledger.add_contact(name, phone, email, notes):
+                print(c(C.GREEN, f"\n  ✓ Kontakt aktualisiert."))
+            else:
+                print(c(C.RED, "  ✗ Fehler."))
+            input(c(C.DIM, "\n  [ENTER]..."))
+
+
+def _run_ledger_import_export(ledger: LinkLedger):
+    """Untermenu: Ledger Import/Export"""
+    while True:
+        _cls()
+        _section("LEDGER IMPORT / EXPORT")
+        print()
+        print(c(C.CYAN, "  [1] In CSV exportieren"))
+        print(c(C.CYAN, "  [2] Aus CSV importieren"))
+        print(c(C.DIM,  "  [Z] Zurück"))
+        print()
+
+        choice = input(c(C.WHITE, "  Wahl: ")).strip().upper()
+
+        if choice == "Z":
+            break
+
+        elif choice == "1":
+            _cls()
+            _section("LEDGER ALS CSV EXPORTIEREN")
+            print()
+            filename = input(c(C.CYAN, "  Dateiname [ledger_export.csv]: ")).strip() or "ledger_export.csv"
+            try:
+                csv_data = ledger.export_to_csv()
+                with open(filename, "w", encoding="utf-8") as f:
+                    f.write(csv_data)
+                print(c(C.GREEN, f"\n  ✓ Exportiert zu '{filename}'"))
+            except Exception as e:
+                print(c(C.RED, f"  ✗ Fehler: {e}"))
+            input(c(C.DIM, "\n  [ENTER]..."))
+
+        elif choice == "2":
+            _cls()
+            _section("LEDGER AUS CSV IMPORTIEREN")
+            print()
+            filename = input(c(C.CYAN, "  Dateiname: ")).strip()
+            if not os.path.exists(filename):
+                print(c(C.RED, "  ✗ Datei nicht gefunden."))
+                input(c(C.DIM, "\n  [ENTER]..."))
+                continue
+
+            try:
+                with open(filename, "r", encoding="utf-8") as f:
+                    csv_data = f.read()
+                count = ledger.import_from_csv(csv_data)
+                print(c(C.GREEN, f"\n  ✓ {count} Einträge importiert."))
+            except Exception as e:
+                print(c(C.RED, f"  ✗ Fehler: {e}"))
             input(c(C.DIM, "\n  [ENTER]..."))
 
 
