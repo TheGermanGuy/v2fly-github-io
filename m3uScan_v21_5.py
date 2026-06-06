@@ -1069,7 +1069,7 @@ async def export_m3u_plus_batch(accounts: list,
         u      = acc["u"]
         pw     = acc["pw"]
         is_cf  = acc.get("is_cf", False)
-        ssl_p  = ssl_ctx if is_cf else False
+        ssl_p  = ssl_ctx  # v21.5: Unified SSL (CERT_NONE für alle)
 
         hdrs = ({"User-Agent": random.choice(PLAYER_USER_AGENTS)}
                 if not is_cf else
@@ -1968,8 +1968,9 @@ async def probe_stream_vpn(session, stream_url: str,
     cb   = f"_cb={int(time.time() * 1000)}"
     url  = f"{stream_url}{'&' if '?' in stream_url else '?'}{cb}"
 
-    # SSL: CF-Hosts → ssl_ctx, non-CF → False (wie v18.1)
-    ssl_param = ssl_ctx if is_cf else False
+    # SSL: Alle Hosts → ssl_ctx mit CERT_NONE (Self-Signed akzeptieren)
+    # v21.5: Unified SSL handling für CF + non-CF
+    ssl_param = ssl_ctx
 
     if is_cf:
         profile = state.get_cf_profile(host)
@@ -2139,7 +2140,7 @@ async def check_account(session, host: str, u: str, pw: str,
     t_start   = time.monotonic()
     api       = f"{host}/player_api.php"
     is_cf     = host in state._cf_hosts
-    ssl_param = ssl_ctx if is_cf else False
+    ssl_param = ssl_ctx  # v21.5: Unified SSL (CERT_NONE für alle Hosts)
 
     if is_cf:
         profile = state.get_cf_profile(host)
@@ -3610,7 +3611,7 @@ def _run_export(env: EnvInfo):
                         f"| {_shorten(e['u'],16)} ..."), end="", flush=True)
 
                 is_cf  = host_s in load_cf_hosts()
-                ssl_p  = ssl_ctx if is_cf else False
+                ssl_p  = ssl_ctx  # v21.5: Unified SSL (CERT_NONE für alle)
                 hdrs   = (HeaderManager2026.get_chrome_headers()
                           if is_cf else
                           {"User-Agent": random.choice(BROWSER_USER_AGENTS),
