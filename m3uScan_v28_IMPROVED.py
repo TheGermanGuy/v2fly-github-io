@@ -1429,16 +1429,62 @@ def _process_portal_format(lines: list) -> list:
     return list(dict.fromkeys(output))
 
 # ==============================================================
-# FARBEN & UI
+# FARBEN & UI — Semantische Theme-Schicht + Truecolor-Engine
 # ==============================================================
+# Aktives Theme: MATRIX (monochrom-grün, futuristisch).
+# Farben werden über semantische Rollen vergeben. Die Legacy-Namen
+# (C.CYAN, C.GREEN, …) sind auf diese Rollen gemappt, damit alle
+# bestehenden Aufrufe unverändert weiterlaufen.
+# Theme wechseln = nur die THEME-Tabelle tauschen.
+
+_TRUECOLOR = os.environ.get("COLORTERM", "").lower() in ("truecolor", "24bit")
+
+def _ansi_fg(hexcode: str) -> str:
+    """Hex-Farbe → ANSI-Vordergrund (Truecolor, sonst 256-Fallback)."""
+    h = hexcode.lstrip("#")
+    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+    if _TRUECOLOR:
+        return f"\033[38;2;{r};{g};{b}m"
+    idx = 16 + 36 * (r * 5 // 255) + 6 * (g * 5 // 255) + (b * 5 // 255)
+    return f"\033[38;5;{idx}m"
+
+# MATRIX-Palette — semantische Rolle → Hex
+THEME = {
+    "PRIMARY": "#00ff9c",   # Rahmen, Titel, Sektionen
+    "ACCENT":  "#7CFC00",   # Tasten [A] [1] …
+    "SUCCESS": "#00ff9c",   # DE-Treffer / OK
+    "WARN":    "#d7ff00",   # läuft bald ab / Rate-Limit
+    "DANGER":  "#ff5555",   # Fehler (bewusst Rot — muss eindeutig bleiben)
+    "INFO":    "#43d9ad",   # Hinweise
+    "SPECIAL": "#2dd4bf",   # VPN
+    "CF":      "#a3e635",   # Cloudflare (eigene Limette zur Abgrenzung)
+    "MUTED":   "#2f7d5b",   # Sekundärinfo (auf AMOLED sichtbar)
+    "TEXT":    "#c8facc",   # Fließtext
+}
+
 class C:
-    RESET  = "\033[0m";  BOLD   = "\033[1m";  DIM    = "\033[2m"
-    GREEN  = "\033[92m"; RED    = "\033[91m";  YELLOW = "\033[93m"
-    CYAN   = "\033[96m"; PURPLE = "\033[35m";  WHITE  = "\033[97m"
-    ORANGE = "\033[33m"; BLUE   = "\033[94m"
-    # GRAY = \033[90m ("bright black") — sichtbar auf OLED/AMOLED wo DIM
-    # unsichtbar ist. Für sekundäre Info statt C.DIM verwenden.
-    GRAY   = "\033[90m"
+    # SGR-Attribute
+    RESET  = "\033[0m";  BOLD = "\033[1m";  DIM = "\033[2m"
+    # Legacy-Farbnamen → MATRIX-Rollen
+    GREEN  = _ansi_fg(THEME["SUCCESS"])
+    RED    = _ansi_fg(THEME["DANGER"])
+    YELLOW = _ansi_fg(THEME["WARN"])
+    CYAN   = _ansi_fg(THEME["PRIMARY"])
+    PURPLE = _ansi_fg(THEME["SPECIAL"])
+    WHITE  = _ansi_fg(THEME["TEXT"])
+    ORANGE = _ansi_fg(THEME["CF"])
+    BLUE   = _ansi_fg(THEME["INFO"])
+    GRAY   = _ansi_fg(THEME["MUTED"])
+    # Semantische Aliase (für neuen Code bevorzugt)
+    PRIMARY = CYAN
+    ACCENT  = _ansi_fg(THEME["ACCENT"])
+    SUCCESS = GREEN
+    WARN    = YELLOW
+    DANGER  = RED
+    INFO    = BLUE
+    SPECIAL = PURPLE
+    MUTED   = GRAY
+    TEXT    = WHITE
 
 def c(color, text):
     return f"{color}{text}{C.RESET}"
