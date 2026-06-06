@@ -505,9 +505,12 @@ class OutputBuffer:
         if not self.buffer:
             return
         try:
-            with open(self.fname, "a", encoding="utf-8") as f:
-                f.write("\n".join(self.buffer) + "\n")
-            self.total_written += len(self.buffer)
+            # Filter None-Werte (Pydroid 3 Bug-Fix)
+            valid_items = [item for item in self.buffer if item is not None]
+            if valid_items:
+                with open(self.fname, "a", encoding="utf-8") as f:
+                    f.write("\n".join(valid_items) + "\n")
+                self.total_written += len(valid_items)
             self.buffer = []
         except (IOError, OSError):
             pass
@@ -548,6 +551,10 @@ async def _append_link(fname: str, link: str):
     Reduziert I/O-Blockierungen durch Batch-Writes.
     Fallback zu sofortigem Schreiben wenn Buffer nicht initialisiert.
     """
+    # Pydroid 3 Bug-Fix: Ignoriere None-Werte
+    if link is None or not isinstance(link, str):
+        return
+
     buffer = _output_buffers.get(fname)
     if buffer is not None:
         # Gepuffert schreiben (bevorzugt)
