@@ -109,7 +109,6 @@ Erfordert: pip install aiohttp tqdm   |   Python 3.7+  (empf. 3.10+)
 import re
 import ssl
 import sys
-import socket
 import random
 import json
 import hashlib
@@ -1258,17 +1257,19 @@ def _adult_label(tier: int) -> str:
     return "🔞 ADULT*" if tier == 1 else "🔞 ADULT~"
 
 
+_UMLAUT_TABLE = str.maketrans({
+    "ä": "ae", "Ä": "AE", "ö": "oe", "Ö": "OE",
+    "ü": "ue", "Ü": "UE", "ß": "ss",
+})
+
 def _normalize(text: str) -> str:
     """
     Umlaut-Normalisierung vor dem DE-Matching.
     Wandelt ä→ae, ö→oe, ü→ue, ß→ss (und Grossbuchstaben).
     Erkennt Kategorienamen auch wenn Umlaute fehlen oder ersetzt wurden.
+    v28: str.translate() statt 6× .replace() → ein Durchlauf (Hot-Path).
     """
-    return (text
-            .replace("ä", "ae").replace("Ä", "AE")
-            .replace("ö", "oe").replace("Ö", "OE")
-            .replace("ü", "ue").replace("Ü", "UE")
-            .replace("ß", "ss"))
+    return text.translate(_UMLAUT_TABLE)
 
 
 def _extract_names(raw: str, key: str = "category_name") -> str:
@@ -2510,8 +2511,10 @@ async def tcp_precheck(host: str) -> bool:
         except asyncio.TimeoutError:
             pass
         result = True
-    except (asyncio.TimeoutError, OSError, ConnectionRefusedError,
-            socket.gaierror, Exception):
+    except Exception:
+        # v28: jeder Verbindungsfehler → False. Das vorherige Tupel war
+        # redundant (alle Typen sind Exception-Subklassen). CancelledError
+        # (BaseException) wird weiterhin NICHT gefangen → Cancel propagiert.
         result = False
 
     ttl = _PRECHECK_TTL_OK if result else _PRECHECK_TTL_ERR
@@ -3599,6 +3602,7 @@ def _run_export(env: EnvInfo):
     ]
 
     entries = []   # Liste von dicts: {idx, url, host, user, pw, label, col}
+    seen_keys = set()   # v28: O(1)-Duplikat-Check statt O(n²)-Linearsuche
     _url_re = re.compile(
         r'https?://[^\s]+(?:get\.php|player_api\.php)[^\s]*'
         r'[?&]username=([^&\s]+)[&]password=([^&\s]+)',
@@ -3623,8 +3627,9 @@ def _run_export(env: EnvInfo):
                     pw     = m.group(2)
                     # Duplikate (gleicher host+user) überspringen
                     key = (host.lower(), user.lower())
-                    if any(e["_key"] == key for e in entries):
+                    if key in seen_keys:
                         continue
+                    seen_keys.add(key)
                     entries.append({
                         "_key": key,
                         "url":  line,
