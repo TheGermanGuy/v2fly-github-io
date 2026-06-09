@@ -831,44 +831,135 @@ def generate_m3u_export(links: list, out_file: str,
 
 
 _TIER1_WEIGHTS = {
-    # Oeffentlich-Rechtlich
-    "ARD": 5, "ZDF": 5, "WDR": 5, "NDR": 5, "SWR": 5,
-    "MDR": 5, "RBB": 5, "HR":  5, "BR":  5, "SR":  5,
-    "3SAT": 4, "PHOENIX": 4, "ARTE DE": 4, "TAGESSCHAU24": 4,
-    "ONE": 3, "FUNK": 3, "KIKA": 3,
-    # Grosse Privatsender
-    "RTL": 4, "RTL+": 4, "RTL2": 4, "RTLNITRO": 3,
-    "VOX": 3, "NTV": 3, "N-TV": 3, "SUPER RTL": 3,
-    "PROSIEBEN": 4, "PRO7": 4, "SAT.1": 4, "SAT1": 4,
-    "KABEL EINS": 3, "SIXX": 3, "SAT1GOLD": 3, "PROSIEBEN MAXX": 3,
-    # Sport (geofenced)
-    "DAZN DE": 5, "SKY DE": 5, "MAGENTASPORT": 4,
-    "SPORT1": 3, "EUROSPORT DE": 3, "BILD SPORT": 3,
-    # Pay-TV / Streaming
-    "JOYN": 3, "JOYN+": 3, "MAGENTA TV": 3,
-    "SKY SPORT": 3, "SKY CINEMA": 3, "SKY ONE": 3,
-    "DISCOVERY DE": 3, "TLC DE": 3, "DMAX DE": 3,
-    "ROMANCE TV": 2, "HISTORY DE": 2, "NAT GEO DE": 2,
-    # Oesterreich & Schweiz
-    "ORF1": 4, "ORF2": 4, "ORF3": 3, "ORFIII": 3,
-    "SERVUS TV": 4, "PULS4": 3, "ATV": 3, "ATV2": 2,
-    "SRF1": 4, "SRF2": 4, "SRF INFO": 3, "SRF ZWEI": 3,
-    "3PLUS": 2, "TV24": 2, "TELECLUB": 2,
-    # Kinder
-    "NICK DE": 3, "TOGGO PLUS": 3,
-    "CARTOON NETWORK DE": 2, "DISNEY DE": 2,
-    # Regionale & Sonstige
-    "WELT": 3, "TELE 5": 3, "BILD TV": 3, "BIBEL TV": 2,
-    "MUNCHEN TV": 3, "HAMBURG 1": 3, "BERLIN TV": 3,
-    "RPR1": 2, "SWR3": 2, "DLF": 3, "DEUTSCHLANDFUNK": 3,
-    "ANIXE": 2, "MTV DE": 2, "VIVA": 2,
-    "COMEDY CENTRAL DE": 2, "HEIMATKANAL": 2,
-    # Neu in v19.6
-    "ZDF NEO": 4, "SKY KRIMI": 3, "KABEL EINS DOKU": 3,
-    "TERRA X": 3, "WELT DER WUNDER": 2, "BILD+": 3,
-    "PARAMOUNT+ DE": 3, "PARAMOUNT DE": 3,
-    "JOYN ORIGINALS": 3, "APPLE TV+ DE": 2, "PEACOCK DE": 2,
-    "SKY NATURE": 2, "SKY DOCUMENTARIES": 2,
+    # ════════════════════════════════════════════════════════════════
+    # OEFFENTLICH-RECHTLICH (ÖRR) — 9 Rundfunkanstalt
+    # ════════════════════════════════════════════════════════════════
+    "ARD": 5, "DASerste": 5, "ZDF": 5, "ZDFNEO": 4, "ZDFINFO": 4, "ZDFKULTUR": 4,
+    "WDR": 5, "WDR FERNSEHEN": 5, "NDR": 5, "SWR": 5, "MDR": 5, "RBB": 5,
+    "HR": 5, "BR": 5, "SR": 5, "BREMENEINS": 4,
+    "3SAT": 4, "PHOENIX": 4, "ARTE": 5, "ARTEDE": 5, "TAGESSCHAU": 5,
+    "TAGESSCHAU24": 4, "TAGESTHEMEN": 4, "HEUTE": 5, "HEUTE JOURNAL": 4,
+    "ONE": 3, "FUNK": 3, "KIKA": 3, "KIKANINCHEN": 3, "TELE 5": 3,
+
+    # ════════════════════════════════════════════════════════════════
+    # PRO SIEBEN SAT.1 GRUPPE (grosse Privatsender)
+    # ════════════════════════════════════════════════════════════════
+    "PROSIEBEN": 4, "PRO7": 4, "PROSIEBEN MAXX": 3,
+    "SAT.1": 4, "SAT1": 4, "SAT1GOLD": 3, "SAT1 EMOTIONS": 2,
+    "KABEL EINS": 3, "KABEL1": 3, "KABEL EINS DOKU": 3,
+    "SIXX": 3, "SIXX": 3,
+
+    # ════════════════════════════════════════════════════════════════
+    # RTL GRUPPE (grosse Privatsender)
+    # ════════════════════════════════════════════════════════════════
+    "RTL": 4, "RTL+": 4, "RTLPLUS": 4,
+    "RTL2": 4, "RTL TWO": 4,
+    "VOX": 3, "VOXDE": 3,
+    "NTV": 3, "N-TV": 3, "NTVE": 3,
+    "SUPER RTL": 3, "SUPERRTL": 3,
+    "RTL NITRO": 3, "RTLNITRO": 3,
+    "RTL UHD": 3, "RTLUHD": 3,
+    "RTL PASSION": 2, "RTL CRIME": 2, "RTL LIVING": 2,
+
+    # ════════════════════════════════════════════════════════════════
+    # SPORT & FUSSBALL (hochgradig deutschlands-spezifisch)
+    # ════════════════════════════════════════════════════════════════
+    "DAZN": 5, "DAZN DE": 5, "DAZN DEUTSCH": 5,
+    "SKY DEUTSCHLAND": 5, "SKY DE": 5, "SKY": 4,
+    "SKY SPORT": 4, "SKY CINEMA": 4, "SKY ONE": 3, "SKY KRIMI": 3,
+    "SKY NATURE": 3, "SKY DOCUMENTARIES": 3, "SKY SELECT": 3, "SKY SPORT NEWS": 3,
+    "MAGENTASPORT": 4, "MAGENTA SPORT": 4, "MAGENTA TV": 3,
+    "SPORT1": 3, "SPORT1+": 3, "EUROSPORT": 3, "EUROSPORT DE": 3, "EUROSPORT 2": 3,
+    "BILD SPORT": 3, "BILD+": 3,
+    "BUNDESLIGA": 5, "DFB-POKAL": 5, "DFB POKAL": 5, "DFBPOKAL": 5,
+    "CHAMPIONS LEAGUE": 3, "CHAMPIONS LEAGUE DE": 3,
+    "KONFERENZ": 4, "LIVE KONFERENZ": 4,
+
+    # ════════════════════════════════════════════════════════════════
+    # STREAMING & PAY-TV (moderne Video-Services)
+    # ════════════════════════════════════════════════════════════════
+    "JOYN": 3, "JOYN+": 3, "JOYNPLUS": 3, "JOYN ORIGINALS": 3,
+    "PARAMOUNT+": 3, "PARAMOUNT PLUS": 3, "PARAMOUNT": 3, "PARAMOUNTDE": 3,
+    "APPLE TV+": 2, "APPLETV": 2, "APPLE TVPLUS": 2,
+    "AMAZON PRIME": 2, "PRIME VIDEO": 2, "AMAZONDE": 2,
+    "NETFLIX": 2, "NETFLIX DE": 2,
+    "DISCOVERY+": 3, "DISCOVERYPLUS": 3, "DISCOVERY DE": 3,
+    "PEACOCK": 2, "PEACOCK DE": 2, "PEACOCKDE": 2,
+    "WAIPU.TV": 3, "WAIPU": 3, "WAIPUDE": 3,
+
+    # ════════════════════════════════════════════════════════════════
+    # DISCOVERY-NETZWERK & DOKUMENTATION
+    # ════════════════════════════════════════════════════════════════
+    "TLC": 3, "TLC DE": 3, "TLCDE": 3,
+    "DMAX": 3, "DMAX DE": 3, "DMAXDE": 3,
+    "INVESTIGATION DISCOVERY": 3, "DISCOVERYDE": 3,
+    "SCIENCE": 2, "ANIMAL PLANET": 2, "HOME": 2,
+    "WELT DER WUNDER": 2, "TERRA X": 3, "TERRA X": 3,
+    "HISTORY": 2, "HISTORY DE": 2, "HISTORYEUROPE": 2,
+    "NAT GEO": 2, "NAT GEO DE": 2, "NATGEO": 2,
+    "ROMANCE TV": 2, "ROMANCE": 2,
+
+    # ════════════════════════════════════════════════════════════════
+    # KINDER & FAMILY (kinderfreundliche Inhalte)
+    # ════════════════════════════════════════════════════════════════
+    "NICK": 3, "NICK DE": 3, "NICKDE": 3, "NICKELODEON": 3,
+    "TOGGO PLUS": 3, "TOGGOKIDS": 3, "TOGGO": 3,
+    "CARTOON NETWORK": 2, "CARTOON NETWORK DE": 2, "CARTOONNETWORK": 2,
+    "DISNEY": 2, "DISNEY DE": 2, "DISNEYDE": 2, "DISNEY CHANNEL": 2,
+    "JUNIOR": 2, "KINDER": 2,
+
+    # ════════════════════════════════════════════════════════════════
+    # REGIONAL & LOKAL (deutschlandweit, aber regionale Fokus)
+    # ════════════════════════════════════════════════════════════════
+    "WELT": 3, "WELTDE": 3, "WELT DER WUNDER": 2,
+    "BILD": 3, "BILD TV": 3, "BILDTV": 3,
+    "MUNCHEN TV": 3, "MUENCHEN TV": 3, "MUENCHENTVDE": 3,
+    "HAMBURG 1": 3, "HAMBURG": 3,
+    "BERLIN TV": 3, "BERLINTV": 3, "B1": 3,
+    "NRD": 3, "RHEINMAIN TV": 3, "RFN": 3,
+    "BERLINERNORDDEUTSCHER": 3, "BERLINERNORDDEUTSCH": 3,
+    "RPR1": 2, "SWR3": 2, "SWR1": 2, "SWR4": 2, "SWRDE": 2,
+    "DLF": 3, "DEUTSCHLANDFUNK": 3, "DLF NOVA": 3,
+
+    # ════════════════════════════════════════════════════════════════
+    # MUSIK & KULTUR (deutschlandweit, besondere Ausrichtung)
+    # ════════════════════════════════════════════════════════════════
+    "MTV": 2, "MTV DE": 2, "MTVDE": 2,
+    "VIVA": 2, "VIVADE": 2,
+    "ANIXE": 2, "ANIMAX": 2, "ANIXEPLUS": 2,
+    "COMEDY CENTRAL": 2, "COMEDY CENTRAL DE": 2, "COMEDYCENTRALDE": 2,
+    "HEIMATKANAL": 2, "HEIMAT": 2,
+    "BIBEL TV": 2, "BIBELTV": 2, "BIBEL": 2,
+    "HOFFNUNG TV": 2, "JESUS.DE TV": 2, "JESUS TV": 2,
+
+    # ════════════════════════════════════════════════════════════════
+    # OESTERREICH (ÖRR + Privat)
+    # ════════════════════════════════════════════════════════════════
+    "ORF1": 4, "ORFONE": 4, "ORF 1": 4,
+    "ORF2": 4, "ORFTWO": 4, "ORF 2": 4,
+    "ORF3": 3, "ORFTHREE": 3, "ORFIII": 3, "ORF 3": 3,
+    "ORFSAT": 3, "ORF SPORT": 3, "ORF EINS": 4,
+    "SERVUS TV": 4, "SERVUSTV": 4, "SERVUS": 4,
+    "PULS 4": 3, "PULS4": 3, "PULSVIER": 3,
+    "ATV": 3, "ATVAUSTRIA": 3, "ATV2": 2, "ATV AT": 3,
+    "OKTO": 2,
+
+    # ════════════════════════════════════════════════════════════════
+    # SCHWEIZ (SRG + Privat)
+    # ════════════════════════════════════════════════════════════════
+    "SRF1": 4, "SRFONE": 4, "SRF 1": 4, "SRF EIN": 4,
+    "SRF2": 4, "SRFTWO": 4, "SRF 2": 4, "SRF ZWEI": 4,
+    "SRF INFO": 3, "SRFINFO": 3, "SRF INFORMATION": 3,
+    "SRF KULTUR": 3, "SRFKULTUR": 3, "SRF KULTUR": 3,
+    "SRF SPORT": 3, "SRFSPORT": 3, "SRF SPORTS": 3,
+    "3PLUS": 2, "TROIS": 2, "3 PLUS": 2,
+    "TV24": 2, "TELE24": 2,
+    "TELECLUB": 2, "TELECLUB CH": 2,
+    "MYSPORTS": 2, "MY SPORTS": 2,
+
+    # ════════════════════════════════════════════════════════════════
+    # DEFAULT FALLBACK (bei unbekanntem deutschen Sender)
+    # ════════════════════════════════════════════════════════════════
     "_default": 3,
 }
 
@@ -1158,8 +1249,20 @@ _DE_TIER2 = re.compile(
 )
 
 _DE_EXCLUDE = re.compile(
-    r'\b(?:DECODER|DEIN|DEMI|DEMO|DESIGN|DESKTOP|DEVELOP|DEEP|'
-    r'DELL|DELTA|DELIVERY|DEFEND|DEFINED|DEFEAT|DELETE|DEPLOY)\b',
+    # Häufige False-Positive-Präfixe (keine deutschen Kanäle)
+    r'\b(?:'
+    r'DECODER|DEIN|DEMI|DEMO|DESIGN|DESKTOP|DEVELOP|DEEP|'
+    r'DELL|DELTA|DELIVERY|DEFEND|DEFINED|DEFEAT|DELETE|DEPLOY|'
+    # Neue False-Positives aus Datenbanken:
+    r'DE AGOSTINI|DE GEA|DELAWARE|DENTAL|DEPOT|DERMA|DEVOPS|'
+    r'DEPO|DEPLOY|DESERT|DETECT|DEFY|देWA|DEWAR|DEVAIR|'
+    # Brand/Marken-Namen:
+    r'DEERE|DEUTZ|DEGUSSA|DENON|DELPHI|DENSPLY|'
+    # Geographische Fehlmatch:
+    r'DELAWARE|DELHI|DENVER|DETROIT|DELAWARE|'
+    # Tech/System:
+    r'DEBUG|DEFRAG|DEFECTS|DEFINE|DEFUNCT|'
+    r')\b',
     re.IGNORECASE,
 )
 
@@ -1262,6 +1365,18 @@ _UMLAUT_TABLE = str.maketrans({
     "ü": "ue", "Ü": "UE", "ß": "ss",
 })
 
+def _split_camelcase(text: str) -> str:
+    """
+    Teile CamelCase-Namen für bessere Matching.
+    "ARDHDde" → "ARD HD de", "ProSiebenSAT1" → "Pro Sieben SAT 1"
+    v28: Hilft bei Compound-Namen ohne Separatoren zu matchen.
+    """
+    # Einfache Heuristik: Großbuchstaben + Leerzeichen einfügen
+    result = re.sub(r'([a-z])([A-Z])', r'\1 \2', text)
+    # Zahlen isolieren wenn sie an Buchstaben grenzen
+    result = re.sub(r'([A-Za-z])([0-9])', r'\1 \2', result)
+    return result
+
 def _normalize(text: str) -> str:
     """
     Umlaut-Normalisierung vor dem DE-Matching.
@@ -1270,6 +1385,30 @@ def _normalize(text: str) -> str:
     v28: str.translate() statt 6× .replace() → ein Durchlauf (Hot-Path).
     """
     return text.translate(_UMLAUT_TABLE)
+
+
+def _get_de_confidence(is_de: bool, tier: int, score: int) -> int:
+    """
+    Berechne Confidence-Score (0-100%) für DE-Erkennung.
+    Hilfreich für Benutzer-Feedback und Debug-Output.
+
+    Args:
+        is_de: Ob DE erkannt wurde
+        tier: Tier-Level (1=Tier1 sicher, 2=Tier2 wahrscheinlich, 0=nein)
+        score: Numerischer Score aus _score_de_channel()
+
+    Returns:
+        Confidence als Integer 0-100
+    """
+    if not is_de:
+        return 0
+    if tier == 1:
+        # Tier1: 90-100% basierend auf Score (max ~15 Points → 100%)
+        return min(90 + (score // 3), 100)
+    elif tier == 2:
+        # Tier2: 70-89% (weniger sicher, aber OK)
+        return min(70 + (score * 5), 89)
+    return 0
 
 
 def _extract_names(raw: str, key: str = "category_name") -> str:
@@ -1299,10 +1438,12 @@ def score_de_content(text: str, vod_mode: bool = False,
     v19.9: Text wird vor dem Matching umlaut-normalisiert.
     cat_count: Anzahl der Kategorien vom Server.
     Wenn < CAT_MIN_COUNT → Score wird halbiert (Falsch-Positiv-Schutz).
+    v28: CamelCase-Splitting + verbesserte Separator-Erkennung.
     """
-    # v19.9: Normalisierung – Original + normalisierte Version kombinieren
+    # v28: Normalisierung + CamelCase-Splitting für bessere Erkennung
     norm_text = _normalize(text)
-    combined_text = text + " " + norm_text if norm_text != text else text
+    camel_text = _split_camelcase(text)
+    combined_text = " ".join([text, norm_text, camel_text]) if (norm_text != text or camel_text != text) else text
 
     excl_count = len(_DE_EXCLUDE.findall(combined_text))
 
