@@ -1856,7 +1856,7 @@ def _format_hit_oneline(res: dict) -> str:
     # ── Label (kompakt, max 20 Zeichen) ──────────────────────
     tier_m = "*" if tier == 1 else "~"
     _LABELS = {
-        "free":     (C.GREEN,  f"DE{tier_m} ALLE KAT."),
+        "free":     (C.GREEN,  f"DE{tier_m} ALLE KATEGORIEN"),
         "tvonly":   (C.CYAN,   f"DE{tier_m} NUR LIVE"),
         "vpn":      (C.PURPLE, "VPN GESPERRT"),
         "cf":       (C.ORANGE, "CLOUDFLARE"),
@@ -3079,37 +3079,9 @@ def _show_welcome(env: EnvInfo):
                   "v28  ·  Pydroid Edition  ·  2026".center(iw)) + bdr)
     print(c(C.CYAN + C.BOLD, BX["ml"] + BX["h"] * iw + BX["mr"]))
 
-    # ── Datei-Aufschlüsselung ─────────────────────────────────
-    # Schema: | ●  Label           NNNN Links |
-    # Spalten: 1(|) 1(sp) 1(●) 2(sp) 16(label) 2(sp) 9(value) rest + 1(|)
-    file_defs = [
-        (OUTPUT_FILE,   C.GREEN,  "Alle Kategorien"),
-        (TVONLY_FILE,   C.CYAN,   "Nur Live-TV"),
-        (VPN_FILE,      C.PURPLE, "VPN nötig"),
-        (EXPIRING_FILE, C.YELLOW, "Endet bald"),
-        (CF_FILE,       C.ORANGE, "Cloudflare"),
-    ]
-    LBL_W = 16   # feste Label-Breite (sichtbar)
-    VAL_W = 9    # feste Wert-Breite  (sichtbar)
-
-    any_file = False
-    for fname, col, lbl in file_defs:
-        n = env.file_counts.get(fname, 0)
-        if n <= 0:
-            continue
-        lbl_s = f"{lbl:<{LBL_W}}"          # plain padding
-        val_s = f"{n:>{VAL_W-5}} Links"     # rechtsbündig
-        # Rest-Padding bis zur rechten Box-Grenze
-        rest  = iw - 1 - 1 - 2 - LBL_W - 2 - VAL_W
-        row   = (f" {c(col, '●')}  {c(C.GRAY, lbl_s)}"
-                 f"  {c(col, val_s)}{' ' * max(rest, 0)}")
-        print(bdr + row + bdr)
-        any_file = True
-
-    if not any_file:
-        msg  = "Noch keine Ausgabedateien vorhanden."
-        rest = iw - 2 - len(msg)
-        print(bdr + c(C.DIM, f"  {msg}{' ' * max(rest, 0)}") + bdr)
+    # ── Datei-Aufschlüsselung: DEAKTIVIERT (v28.1) ───────────────
+    # Output-Dateien werden nicht mehr im Welcome-Screen angezeigt
+    # Nutzer sehen nur Gesamt, CF-Hosts, und Checkpoint unten
 
     # Gesamt
     if env.known_links > 0:
@@ -4385,9 +4357,7 @@ async def _async_main():
         print(c(C.YELLOW,
                 f"  {state.stats['expiring']} Ablauf-Vorwarnungen → {EXPIRING_FILE}"))
 
-    if state.stats["adult"] > 0:
-        print(c(C.PURPLE,
-                f"  {state.stats['adult']} Adult-Treffer → {ADULT_FILE}"))
+    # v28.1: Adult-Links Verweis entfernt (Links werden nicht mehr gespeichert)
 
     # ── v21.2: Automatisches Dedup-Angebot nach Scan ─────────
     if _total_hits > 0:
