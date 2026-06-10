@@ -1837,11 +1837,16 @@ def _format_hit_oneline(res: dict, active_workers: int = 0, max_workers: int = 1
     v21.4: Einzeilige Trefferdarstellung – exakt W=64 Zeichen.
     Kein Umbruch auf Smartphone. Icon 1 Zeichen statt 10.
 
-    v28.1: Zeige aktive/maximale Verbindungen: [X/Y]
+    v28.1: Zeige aktive/maximale Xtream-Account-Verbindungen: [X/Y]
+           (NOT Xtream active_cons / max_connections)
 
     Sichtbares Layout:
-      IC  HOST__________________  USER________  TIME  [X/Y]  LABEL_
+      IC  HOST__________________  USER________  TIME  [A/M]  LABEL_
        1   1  22chars            1  12chars     1  4   1 5  1  ~15ch
+
+    Wobei [A/M]:
+      A = Aktive Verbindungen des Xtream-Accounts
+      M = Maximale Verbindungen des Xtream-Accounts
     """
     dest     = res.get("dest", "")
     host     = res.get("host", "")
@@ -1851,6 +1856,9 @@ def _format_hit_oneline(res: dict, active_workers: int = 0, max_workers: int = 1
     http_code= res.get("http_code", 200)
     is_adult = res.get("is_adult", False)
     a_tier   = res.get("a_tier",   0)
+    # v28.1: Xtream-Account Verbindungen
+    account_active = res.get("active", 0)
+    account_max    = res.get("max_c", 0)
 
     if not dest:
         return ""
@@ -1903,22 +1911,28 @@ def _format_hit_oneline(res: dict, active_workers: int = 0, max_workers: int = 1
     else:
         time_s  = c(C.GRAY, " -- ")
 
-    # ── Aktive Verbindungen [X/Y] ───────────────────────────────
-    # v28.1: Zeige Worker-Status in Brackets
-    workers_s = c(C.DIM, f"[{active_workers}/{max_workers}]")
+    # ── Xtream-Account Verbindungen [A/M] ───────────────────────
+    # v28.1: Zeige aktuelle/maximale Verbindungen des Xtream-Accounts
+    if account_max > 0:
+        # Server gibt max_connections → zeige aktive/max
+        con_col = C.RED if account_active >= account_max else (C.YELLOW if account_active > account_max * 0.75 else C.GREEN)
+        con_s = c(con_col, f"[{account_active}/{account_max}]")
+    else:
+        # Keine max_connections info → zeige nur aktive
+        con_s = c(C.DIM, f"[{account_active}/-]") if account_active > 0 else c(C.DIM, "[-/-]")
 
     # ── Zusammensetzen (Padding VOR Farbe → kein ANSI-Drift) ─
     return (f" {c(icon_col, icon_chr)}"
             f" {c(C.WHITE, host_s)}"
             f" {c(C.GRAY,  user_s)}"
             f" {time_s}"
-            f" {workers_s}"
+            f" {con_s}"
             f" {c(col + C.BOLD, label_text)}")
 
 
-# Rückwärtskompatibler Alias (v28.1: optionale Worker-Parameter)
-def _format_hit(res: dict, active_workers: int = 0, max_workers: int = 1) -> str:
-    return _format_hit_oneline(res, active_workers, max_workers)
+# Rückwärtskompatibler Alias
+def _format_hit(res: dict) -> str:
+    return _format_hit_oneline(res)
 
 
 
@@ -4257,18 +4271,11 @@ async def _async_main():
     ) as session:
         sem = asyncio.Semaphore(cfg.workers)
 
-        # v28.1: Tracker für aktive Worker
-        active_count = {"value": 0}
-        active_lock = asyncio.Lock()
-
         # v19.9: Harter Task-Timeout-Wrapper
         _task_timeout = TIMEOUT * TASK_TIMEOUT_MULT
 
         async def bound(url_str):
             async with sem:
-                # v28.1: Track aktive Worker
-                async with active_lock:
-                    active_count["value"] += 1
                 try:
                     return await asyncio.wait_for(
                         worker(session, state, url_str, ssl_ctx),
@@ -4278,9 +4285,6 @@ async def _async_main():
                     async with state.lock:
                         state.stats["timeout"] += 1
                     return None
-                finally:
-                    async with active_lock:
-                        active_count["value"] = max(0, active_count["value"] - 1)
 
         tasks   = [bound(u) for u in cfg.input_urls]
 
@@ -4334,10 +4338,8 @@ async def _async_main():
                 continue
 
             # v21.1: Einzeilige Ausgabe – _format_hit_oneline() übernimmt alles
-            # v28.1: Übergebe aktive Worker-Anzahl
-            hit_str = _format_hit_oneline(res,
-                                          active_workers=active_count["value"],
-                                          max_workers=cfg.workers)
+            # v28.1: Zeigt jetzt Xtream-Account Verbindungen [active/max] an
+            hit_str = _format_hit_oneline(res)
             if hit_str:
                 tqdm.write(hit_str)
 
