@@ -1832,14 +1832,16 @@ def print_summary(state):
         print()
 
 
-def _format_hit_oneline(res: dict) -> str:
+def _format_hit_oneline(res: dict, active_workers: int = 0, max_workers: int = 1) -> str:
     """
     v21.4: Einzeilige Trefferdarstellung – exakt W=64 Zeichen.
     Kein Umbruch auf Smartphone. Icon 1 Zeichen statt 10.
 
+    v28.1: Zeige aktive/maximale Verbindungen: [X/Y]
+
     Sichtbares Layout:
-      IC  HOST__________________  USER________  TIME  LABEL______
-       1   1  22chars            1  12chars     1  4   1  ~20chars
+      IC  HOST__________________  USER________  TIME  [X/Y]  LABEL_
+       1   1  22chars            1  12chars     1  4   1 5  1  ~15ch
     """
     dest     = res.get("dest", "")
     host     = res.get("host", "")
@@ -1853,7 +1855,7 @@ def _format_hit_oneline(res: dict) -> str:
     if not dest:
         return ""
 
-    # ── Label (kompakt, max 20 Zeichen) ──────────────────────
+    # ── Label (kompakt, max 15 Zeichen) ──────────────────────
     tier_m = "*" if tier == 1 else "~"
     _LABELS = {
         "free":     (C.GREEN,  f"DE{tier_m} ALLE KATEGORIEN"),
@@ -1901,17 +1903,22 @@ def _format_hit_oneline(res: dict) -> str:
     else:
         time_s  = c(C.GRAY, " -- ")
 
+    # ── Aktive Verbindungen [X/Y] ───────────────────────────────
+    # v28.1: Zeige Worker-Status in Brackets
+    workers_s = c(C.DIM, f"[{active_workers}/{max_workers}]")
+
     # ── Zusammensetzen (Padding VOR Farbe → kein ANSI-Drift) ─
     return (f" {c(icon_col, icon_chr)}"
             f" {c(C.WHITE, host_s)}"
             f" {c(C.GRAY,  user_s)}"
             f" {time_s}"
+            f" {workers_s}"
             f" {c(col + C.BOLD, label_text)}")
 
 
-# Rückwärtskompatibler Alias
-def _format_hit(res: dict) -> str:
-    return _format_hit_oneline(res)
+# Rückwärtskompatibler Alias (v28.1: optionale Worker-Parameter)
+def _format_hit(res: dict, active_workers: int = 0, max_workers: int = 1) -> str:
+    return _format_hit_oneline(res, active_workers, max_workers)
 
 
 
@@ -4250,11 +4257,18 @@ async def _async_main():
     ) as session:
         sem = asyncio.Semaphore(cfg.workers)
 
+        # v28.1: Tracker für aktive Worker
+        active_count = {"value": 0}
+        active_lock = asyncio.Lock()
+
         # v19.9: Harter Task-Timeout-Wrapper
         _task_timeout = TIMEOUT * TASK_TIMEOUT_MULT
 
         async def bound(url_str):
             async with sem:
+                # v28.1: Track aktive Worker
+                async with active_lock:
+                    active_count["value"] += 1
                 try:
                     return await asyncio.wait_for(
                         worker(session, state, url_str, ssl_ctx),
@@ -4264,6 +4278,9 @@ async def _async_main():
                     async with state.lock:
                         state.stats["timeout"] += 1
                     return None
+                finally:
+                    async with active_lock:
+                        active_count["value"] = max(0, active_count["value"] - 1)
 
         tasks   = [bound(u) for u in cfg.input_urls]
 
@@ -4317,7 +4334,10 @@ async def _async_main():
                 continue
 
             # v21.1: Einzeilige Ausgabe – _format_hit_oneline() übernimmt alles
-            hit_str = _format_hit_oneline(res)
+            # v28.1: Übergebe aktive Worker-Anzahl
+            hit_str = _format_hit_oneline(res,
+                                          active_workers=active_count["value"],
+                                          max_workers=cfg.workers)
             if hit_str:
                 tqdm.write(hit_str)
 
