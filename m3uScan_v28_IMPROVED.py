@@ -3103,6 +3103,8 @@ def _show_welcome(env: EnvInfo):
     # ── Datei-Aufschlüsselung: DEAKTIVIERT (v28.1) ───────────────
     # Output-Dateien werden nicht mehr im Welcome-Screen angezeigt
     # Nutzer sehen nur Gesamt, CF-Hosts, und Checkpoint unten
+    LBL_W = 16   # feste Label-Breite (sichtbar)
+    VAL_W = 9    # feste Wert-Breite  (sichtbar)
 
     # Gesamt
     if env.known_links > 0:
