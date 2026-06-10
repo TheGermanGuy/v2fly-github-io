@@ -1,5 +1,5 @@
 """
-Xtream DE Scanner v21.5 (Pydroid 3 Optimized) | Author: TheGermanGuy™
+Xtream DE Scanner
 =======================
 Erfordert: pip install aiohttp tqdm   |   Python 3.7+  (empf. 3.10+)
 
@@ -48,7 +48,7 @@ Erfordert: pip install aiohttp tqdm   |   Python 3.7+  (empf. 3.10+)
                    Schreibt: m3uplus/{host}_{user}_{datum}.m3u
 
 ════════════════════════════════════════════════════════
- M3U+ EXPORT-ENGINE  (v21.4)
+ M3U+ EXPORT-ENGINE 
 ════════════════════════════════════════════════════════
   Lädt vollständige M3U direkt vom Server (1 Request, kein API-Loop).
   Filtert jeden Stream nach echtem group-title Feld:
@@ -132,9 +132,8 @@ except ImportError:
     sys.exit(1)
 
 # ==============================================================
-# PLATFORM DETECTION & ADAPTIVE CONFIGURATION (v21.5)
+# PLATFORM DETECTION & ADAPTIVE CONFIGURATION
 # ==============================================================
-# Erkenne Pydroid/Mobile-Umgebung zur Laufzeit
 IS_PYDROID = 'PYDROID' in sys.version or 'pydroid' in str(sys.executable).lower()
 IS_MOBILE = IS_PYDROID or 'arm' in sys.platform
 
@@ -142,13 +141,137 @@ if IS_PYDROID or IS_MOBILE:
     _PLATFORM_MSG = "Pydroid 3" if IS_PYDROID else "Android"
     print(f"[INFO] Mobile-Umgebung erkannt: {_PLATFORM_MSG}")
 
+# System detection (CPU cores, RAM, ARM version)
+try:
+    import psutil
+    HAS_PSUTIL = True
+except ImportError:
+    HAS_PSUTIL = False
+    psutil = None
+
+def _get_cpu_count() -> int:
+    """Get physical CPU core count."""
+    try:
+        if HAS_PSUTIL:
+            return psutil.cpu_count(logical=False) or os.cpu_count() or 2
+        return os.cpu_count() or 2
+    except Exception:
+        return 2
+
+def _get_available_memory_mb() -> int:
+    """Get available memory in MB."""
+    try:
+        if HAS_PSUTIL:
+            return int(psutil.virtual_memory().available / (1024 * 1024))
+        return 512
+    except Exception:
+        return 512
+
+def _detect_arm_version() -> str:
+    """Detect ARM architecture version (v7 vs v8/64)."""
+    import platform
+    try:
+        machine = platform.machine().lower()
+        if 'armv8' in machine or 'aarch64' in machine or 'arm64' in machine:
+            return 'ARM64'
+        elif 'armv7' in machine or 'arm' in machine:
+            return 'ARMv7'
+    except Exception:
+        pass
+    return 'Unknown'
+
+# Gather system info at startup
+_CPU_COUNT = _get_cpu_count()
+_RAM_AVAILABLE_MB = _get_available_memory_mb()
+_ARM_VERSION = _detect_arm_version() if IS_MOBILE else None
+
+def _determine_optimal_workers(unique_hosts: int = 0, total_links: int = 0) -> dict:
+    """
+    Intelligente Worker-Bestimmung basierend auf Systemressourcen und Eingabedaten.
+
+    Rückgabe: {
+        'workers': int,           # Recommended worker count
+        'cpu_cores': int,         # Detected CPU cores
+        'ram_mb': int,            # Available RAM in MB
+        'platform': str,          # 'Pydroid3', 'Android', 'Desktop'
+        'arm_version': str|None,  # 'ARM64', 'ARMv7', None (Desktop)
+        'limiting_factor': str,   # What limited the calculation
+    }
+
+    Logik:
+      1. CPU-basiert: cores * 0.75 (I/O-bound Faktor)
+      2. RAM-basiert: ~50MB pro Worker → available_ram / 50
+      3. Unique Hosts: hosts // 3 (Balance CPU vs. I/O)
+      4. Device-spezifische Grenzen:
+         - Pydroid3/ARM64: 6-12 Worker
+         - Pydroid3/ARMv7: 3-6 Worker (schwächer)
+         - Mobile/Android: 4-8 Worker
+         - Desktop: 8-24 Worker (genug RAM vorausgesetzt)
+      5. Minimum: 2, Maximum: abhängig von Platform
+    """
+    cpu_cores = _CPU_COUNT
+    ram_mb = _RAM_AVAILABLE_MB
+    limiting_factor = "default"
+
+    # ─ CPU-basiert (I/O-bound: cores * 0.75) ─
+    cpu_based = max(2, int(cpu_cores * 0.75))
+
+    # ─ RAM-basiert (50MB pro Worker puffern) ─
+    ram_based = max(2, ram_mb // 50)
+
+    # ─ Unique Hosts basiert ─
+    hosts_based = max(2, unique_hosts // 3) if unique_hosts > 0 else 4
+
+    # ─ Platform-spezifische Grenzen ─
+    if IS_PYDROID:
+        if _ARM_VERSION == 'ARM64':
+            min_workers, max_workers = 6, 12
+            platform_str = f"Pydroid3 ({_ARM_VERSION})"
+        elif _ARM_VERSION == 'ARMv7':
+            min_workers, max_workers = 3, 6
+            platform_str = f"Pydroid3 ({_ARM_VERSION})"
+        else:
+            min_workers, max_workers = 4, 8
+            platform_str = "Pydroid3"
+    elif IS_MOBILE:
+        min_workers, max_workers = 4, 8
+        platform_str = "Android"
+    else:
+        min_workers, max_workers = 8, 24
+        platform_str = "Desktop"
+
+    # ─ Berechne optimale Anzahl ─
+    workers = min(max(cpu_based, hosts_based), ram_based)
+    workers = max(min_workers, min(workers, max_workers))
+
+    # ─ Bestimme limitierenden Faktor ─
+    if workers == cpu_based:
+        limiting_factor = f"CPU ({cpu_cores} cores)"
+    elif workers == ram_based:
+        limiting_factor = f"RAM ({ram_mb}MB available)"
+    elif workers == hosts_based:
+        limiting_factor = f"Unique Hosts ({unique_hosts})"
+    elif workers == min_workers:
+        limiting_factor = f"Device minimum ({platform_str})"
+    elif workers == max_workers:
+        limiting_factor = f"Device maximum ({platform_str})"
+
+    return {
+        'workers': workers,
+        'cpu_cores': cpu_cores,
+        'ram_mb': ram_mb,
+        'platform': platform_str,
+        'arm_version': _ARM_VERSION if IS_MOBILE else None,
+        'limiting_factor': limiting_factor,
+    }
+
 # ==============================================================
 # KONFIGURATION
 # ==============================================================
-WORKERS             = 8         # v21.5: Optimal (4 Mobile, 8 Desktop)
-MAX_ERRORS_PER_HOST = 50         # v21.0: ↓ von 10 (schnellerer Host-Filter)
-TIMEOUT             = 10        # v21.0: ↓ von 12 (realistischere Request-Zeit)
-PROBE_TIMEOUT       = 6         # v21.0: ↓ von 8  (Stream-Test schneller)
+WORKERS             = 8
+MAX_ERRORS_PER_HOST = 150
+TIMEOUT             = 10
+PROBE_TIMEOUT       = 6
 OUTPUT_FILE         = "free_links.txt"        # Live + VOD beide DE
 TVONLY_FILE         = "free_links_TVonly.txt"  # nur Live DE
 VPN_FILE            = "vpn_links.txt"
@@ -159,18 +282,15 @@ VPN_CHECK           = True
 DEEP_SCAN           = False    # get_all_channels – nur manuell
 W                   = 64       # Terminal-Breite Portrait (Pydroid3)
 
-# Vorprüfung tote Hosts
-PRECHECK_TIMEOUT    = 3.5      # v21.0: ↓ von 3.0 (TCP ist schnell)
-PRECHECK_ENABLED    = True     # False = Pre-Check deaktivieren
+PRECHECK_TIMEOUT    = 3.5
+PRECHECK_ENABLED    = True
 
-# Qualitätswarnung
-DEAD_LINK_WARN_PCT  = 60       # v21.5: ↑ von 50 (bessere Früherkennung schlechter Listen)
+DEAD_LINK_WARN_PCT  = 60
 
-# CF-Tuning (CF_MAX_RETRIES = 0 – Pydroid3 kann keine Challenge lösen)
-CF_JITTER_BASE      = 3.0      # v21.5: ↑ von 2.5 (+20% CF-Erfolgsrate bei 429er)
-CF_MAX_RETRIES      = 0        # 0 = sofort aufgeben (kein Backoff)
-CF_BACKOFF_BASE     = 8.0      # Sekunden Basis-Backoff (ungenutzt bei 0)
-CF_COOKIE_TTL       = 7200     # v21.0: ↑ von 3600 (Cookie länger nutzen)
+CF_JITTER_BASE      = 3.0
+CF_MAX_RETRIES      = 0
+CF_BACKOFF_BASE     = 8.0
+CF_COOKIE_TTL       = 7200
 
 # VOD-Tier2-Schwelle
 VOD_TIER2_MIN       = 1
@@ -180,27 +300,20 @@ DE_TIMEZONES        = {"Europe/Berlin", "Europe/Vienna", "Europe/Zurich",
                        "Europe/Amsterdam", "Europe/Brussels"}
 TZ_DE_BONUS         = 5
 
-# v19.9: Zusatz-Boni aus server_info
-EPG_DE_BONUS        = 3        # epg_url mit .de-Domain
-COUNTRY_DE_BONUS    = 3        # country-Feld DE/AT/CH/GER/AUT/SUI
+EPG_DE_BONUS        = 3
+COUNTRY_DE_BONUS    = 3
 DE_COUNTRIES        = {"DE", "AT", "CH", "GER", "AUT", "SUI", "DEU"}
 
-# --- v19.6 ---
-# Trial-Accounts filtern
 FILTER_TRIAL        = True
 
-# Ablaufdatum-Filter: Accounts die in < N Tagen ablaufen überspringen
 EXP_MIN_DAYS        = 7
 
-# v19.9: Ablauf-Vorwarnung statt hartem Verwerfen
-EXP_WARN_DAYS       = 3        # Accounts mit 3–7 Tagen → expiring_links.txt
+EXP_WARN_DAYS       = 3
 
-# Mindest-Kategorienzahl: unter diesem Wert → Score wird halbiert
 CAT_MIN_COUNT       = 5
 
-# Stichproben-Kanalcheck (nach positivem DE-Score)
-SAMPLE_CHECK        = True     # v21.1: ↑ zurück auf True (Qualitätsfilter aktiv)
-SAMPLE_TIMEOUT      = 5        # v21.0: ↓ von 5 (512-Byte-Check)
+SAMPLE_CHECK        = True
+SAMPLE_TIMEOUT      = 5
 
 # Checkpoint (Scan-Fortschritt speichern) – adaptive Mobile-Optimierung
 CHECKPOINT_FILE     = "scan_checkpoint.json"
@@ -209,21 +322,18 @@ CHECKPOINT_EVERY    = 50       # Standard (erhöht auf Mobile)
 # Adaptive Workers-Anzahl
 WORKERS_AUTO        = True     # False = immer WORKERS nutzen
 
-# Max. Treffer pro Host (Ergebnis-Dedup) – 0=unbegrenzt
-MAX_LINKS_PER_HOST  = 0        # v21.0: ↑ von 2 (mehr Redundanz)
+MAX_LINKS_PER_HOST  = 0
 
-# Harter Task-Timeout-Multiplikator – Basis: TIMEOUT * Multiplikator
-TASK_TIMEOUT_MULT   = 2.5      # v21.5: ↓ von 2.8 (Hard-Timeout: 25s max statt 28s)
+TASK_TIMEOUT_MULT   = 2.5
 
-# v21.3: Adult-Content-Erkennung
-ADULT_SCAN          = True      # Adult-Kategorien parallel scannen
-ADULT_FILE          = "adult_links.txt"   # Accounts mit Adult-Content
-M3UPLUS_DIR         = "m3uplus"           # Ausgabeverzeichnis für M3U+ Dateien
-ADULT_LIVE_MIN      = 1         # Min. Adult Live-Kategorien für Treffer
-ADULT_VOD_MIN       = 1         # Min. Adult VOD-Kategorien für Treffer
+ADULT_SCAN          = True
+ADULT_FILE          = "adult_links.txt"
+M3UPLUS_DIR         = "m3uplus"
+ADULT_LIVE_MIN      = 1
+ADULT_VOD_MIN       = 1
 
 # ══════════════════════════════════════════════════════════════════════════════
-# MOBILE-OPTIMIERUNG (v21.5 Pydroid 3 Adaptive Configuration)
+# MOBILE-OPTIMIERUNG (Pydroid 3 Adaptive Configuration)
 # ══════════════════════════════════════════════════════════════════════════════
 _CHECKPOINT_DESKTOP = CHECKPOINT_EVERY  # Desktop: 50
 if IS_MOBILE:
@@ -246,10 +356,9 @@ PLAYER_USER_AGENTS = [
 ]
 
 # ==============================================================
-# 2026 CF-BYPASS HEADER MANAGER  (Screenshot-Integration v21.0)
+# 2026 CF-BYPASS HEADER MANAGER
 # ==============================================================
-# Vollständige Browser-Fingerprints 2026 für Chrome, Firefox, Safari.
-# Inspiriert vom HeaderManager2026-Modul (Screenshot, Mai 2026).
+# Browser-Fingerprints für Chrome, Firefox, Safari
 # Nutzt get_best_profile(), get_chrome_headers(), get_firefox_headers(),
 # get_safari_headers() – rotiert pro Request automatisch.
 # ==============================================================
@@ -443,7 +552,7 @@ class HeaderManager2026:
 
     @classmethod
     def get_best_chrome_profile(cls) -> dict:
-        """Wählt zufällig ein Chrome-Profil. v21.1: gleichgewichtet 136/147."""
+        """Wählt zufällig ein Chrome-Profil."""
         weights = [25, 25, 25, 25]      # Win136, Mac136, Lin136, Win147 – gleich
         return random.choices(cls.CHROME_PROFILES, weights=weights, k=1)[0]
 
@@ -475,7 +584,7 @@ BROWSER_USER_AGENTS = [p["User-Agent"] for p in _BROWSER_PROFILES]
 
 # ==============================================================
 # ══════════════════════════════════════════════════════════════════════════════
-# STREAMING-OUTPUT mit BUFFERING (v21.5 – Reduziert I/O Blockierungen)
+# STREAMING-OUTPUT mit BUFFERING – Reduziert I/O Blockierungen
 # ══════════════════════════════════════════════════════════════════════════════
 
 class OutputBuffer:
@@ -521,7 +630,7 @@ class OutputBuffer:
 
 
 _file_locks: dict = {}   # fname → asyncio.Lock
-_output_buffers: dict = {}  # fname → OutputBuffer (v21.5)
+_output_buffers: dict = {}  # fname → OutputBuffer
 
 def _init_file_locks():
     """Muss nach asyncio-Loop-Start aufgerufen werden."""
@@ -534,7 +643,7 @@ def _init_file_locks():
         EXPIRING_FILE: asyncio.Lock(),
     }
 
-    # Adaptive Buffer-Größe für Mobile (v21.5)
+    # Adaptive Buffer-Größe für Mobile
     buffer_size = 10 if IS_MOBILE else 20
     _output_buffers = {
         OUTPUT_FILE:   OutputBuffer(OUTPUT_FILE, buffer_size),
@@ -546,7 +655,7 @@ def _init_file_locks():
 
 async def _append_link(fname: str, link: str):
     """
-    Schreibt Link in Datei über Buffer (v21.5 Output Buffering).
+    Schreibt Link in Datei über Buffer
     Reduziert I/O-Blockierungen durch Batch-Writes.
     Fallback zu sofortigem Schreiben wenn Buffer nicht initialisiert.
     """
@@ -601,7 +710,7 @@ CF_ERROR_CODES = set(range(520, 531))
 # ==============================================================
 # TLS-KONTEXT
 # ==============================================================
-# WICHTIG (v19.5-Fix):
+# WICHTIG
 # Dieser Context wird NUR für CF-Hosts verwendet.
 # Non-CF-Hosts erhalten ssl=False (kein TLS-Fingerprint → kein JA3).
 # Der Context hier verbessert die Cipher-Reihenfolge,
@@ -610,7 +719,7 @@ CF_ERROR_CODES = set(range(520, 531))
 # Cookie+Header-Validierung statt reines JA3-Blocking nutzt.
 def _build_ssl_context() -> ssl.SSLContext:
     """
-    SSL-Context für CF-Hosts. v21.0: Erweiterte Cipher-Suite aus
+    SSL-Context für CF-Hosts.
     HeaderManager2026 (Screenshot). Chrome-TLS-Fingerprint-Härtung.
     Nur für bekannte CF-Hosts genutzt – Non-CF: ssl=False.
     """
@@ -749,7 +858,7 @@ def http_status_str(code: int) -> str:
 
 def _status_icon_line(code: int, host: str, extra: str = "") -> str:
     """
-    v21.0: Einzeilige Status-Ausgabe pro Account (tqdm.write).
+   
     Format: ● [200 OK] | server.tv:8080 | Zusatzinfo
     Inspiriert von Hippie65 Status-Dot-System.
     """
@@ -964,7 +1073,7 @@ _TIER1_WEIGHTS = {
 }
 
 # ==============================================================
-# M3U+ PER-ACCOUNT GENERATOR v21.3
+# M3U+ PER-ACCOUNT GENERATOR
 # Holt Streams via API und schreibt vollständige M3U+ Datei
 # mit tvg-name, tvg-logo, group-title für DE + Adult Content
 # ==============================================================
@@ -973,9 +1082,9 @@ async def generate_m3u_plus_for_account(
         hdrs: dict, ssl_param,
         include_adult: bool = True) -> tuple:
     """
-    M3U+ Generator v21.4 – Direkter M3U-Download + Stream-Filterung.
+    M3U+ Generator
 
-    Architektur-Wechsel gegenüber v21.3:
+    Architektur-Wechsel gegenüber
     Statt N*2 API-Calls (get_live_categories → get_live_streams pro Kategorie),
     wird die vollständige M3U direkt heruntergeladen und jeder Stream
     nach seinem echten group-title Feld gefiltert.
@@ -1157,7 +1266,7 @@ async def export_m3u_plus_batch(accounts: list,
                                 session, ssl_ctx,
                                 include_adult: bool = True):
     """
-    v21.3: Generiert M3U+ Dateien für alle übergebenen Accounts.
+   
     accounts: Liste von dicts mit host, u, pw, is_cf, dest
     Schreibt Dateien in M3UPLUS_DIR/{host}_{user}_{datum}.m3u
     """
@@ -1170,7 +1279,7 @@ async def export_m3u_plus_batch(accounts: list,
         u      = acc["u"]
         pw     = acc["pw"]
         is_cf  = acc.get("is_cf", False)
-        ssl_p  = ssl_ctx  # v21.5: Unified SSL (CERT_NONE für alle)
+        ssl_p  = ssl_ctx  #
 
         hdrs = ({"User-Agent": random.choice(PLAYER_USER_AGENTS)}
                 if not is_cf else
@@ -1241,7 +1350,7 @@ _DE_TIER2 = re.compile(
     r'\bBUNDESLIGA\b|\bDFB[\s-]?POKAL\b|'
     r'\bTATORT\b|\bSPORTSCHAU\b|\bTAGESSCHAU\b|'
     r'\bDE\s*:\s|\bDE\s*\||\|DE\b|\[DE\]|\(DE\)|'
-    # Literal Unicode + erweiterter Pfeilsatz (➽❖ neu gegenüber v19.7)
+    # Literal Unicode + erweiterter Pfeilsatz (➽❖ neu gegenüber
     r'\bDE\s*[◆•►▶★»➤➜➔➽❖]|'
     r'[◆•►▶★»➤➜➔]\s*\bDE\b'
     r')',
@@ -1294,7 +1403,7 @@ _DE_GENRE_NAMES = re.compile(
 )
 
 # ==============================================================
-# ADULT-ERKENNUNG v21.3
+# ADULT-ERKENNUNG
 # Tier 1: Eindeutige Adult-Begriffe (starkes Signal)
 # Tier 2: Mehrdeutige / schwächere Signale
 # ==============================================================
@@ -1333,7 +1442,7 @@ _ADULT_TIER2 = re.compile(
 
 def score_adult_content(text: str) -> tuple:
     """
-    v21.3: Bewertet Text auf Adult-Content.
+   
     Rückgabe: (is_adult: bool, score: int, tier: int)
       tier=1 → sicher Adult (Tier-1-Treffer)
       tier=2 → wahrscheinlich Adult (min. 2 Tier-2-Treffer)
@@ -1435,7 +1544,7 @@ def score_de_content(text: str, vod_mode: bool = False,
       tier=2 wahrscheinlich   [DE~]
       tier=0 kein DE
 
-    v19.9: Text wird vor dem Matching umlaut-normalisiert.
+   
     cat_count: Anzahl der Kategorien vom Server.
     Wenn < CAT_MIN_COUNT → Score wird halbiert (Falsch-Positiv-Schutz).
     v28: CamelCase-Splitting + verbesserte Separator-Erkennung.
@@ -1503,7 +1612,7 @@ _RE_CREDS = re.compile(
     r'^([^:/\s]{1,64}):([^:/\s]{3,64})$'
 )
 
-# Optimierte Pre-Compiled Patterns für Hot-Paths (v21.4 Optimization)
+# Optimierte Pre-Compiled Patterns für Hot-Paths
 _FOR_ADULT_PFX = re.compile(r'^FOR\s*(?:\||✦|►|•|◆|▶)', re.IGNORECASE)
 _ADULT_KEYWORDS = re.compile(r'\bADULT\b|\bXXX\b|\bPORN\b', re.IGNORECASE)
 _ANSI_ESCAPE = re.compile(r"\033\[[0-9;]*m")
@@ -1658,7 +1767,7 @@ else:
           "rate": "o", "special": "*", "arrow": ">"}
 
 # ══════════════════════════════════════════════════════════════════════════════
-# ADAPTIVE TERMINAL WIDTH DETECTION (v21.5)
+# ADAPTIVE TERMINAL WIDTH DETECTION
 # ══════════════════════════════════════════════════════════════════════════════
 def _detect_terminal_width():
     """
@@ -1701,7 +1810,7 @@ def _fmt_conns(active: int, max_c: int) -> str:
 
 def print_config_banner(total: int, loaded: int, cf_preloaded: int,
                         workers_actual: int, workers_auto: bool = False):
-    print(_hdr("XTREAM DE SCANNER v21.4"))
+    print(_hdr("XTREAM DE SCANNER v28.0"))
     rows = [
         ("Links gefunden",    str(total)),
         ("Bekannte übersprungen",  str(loaded)),
@@ -1718,11 +1827,6 @@ def print_config_banner(total: int, loaded: int, cf_preloaded: int,
         ("Kat-Min",           f"{CAT_MIN_COUNT} (Score /2 darunter)"),
         ("Streaming-Output",  "JA (sofort)"),
         ("SSL-Prüfung",        "False (kein JA3-Fingerprint)"),
-        ("Output: Frei",      OUTPUT_FILE),
-        ("Output: TV-only",   TVONLY_FILE),
-        ("Output: VPN",       VPN_FILE),
-        ("Output: Ablauf",    EXPIRING_FILE),
-        ("Output: CF",        CF_FILE),
     ]
     for k, v in rows:
         print(f"  {c(C.DIM, f'{k:<22}')} {c(C.WHITE, v)}")
@@ -1834,7 +1938,7 @@ def print_summary(state):
 
 def _format_hit_oneline(res: dict, active_workers: int = 0, max_workers: int = 1) -> str:
     """
-    v21.4: Einzeilige Trefferdarstellung – exakt W=64 Zeichen.
+   
     Kein Umbruch auf Smartphone. Icon 1 Zeichen statt 10.
 
     v28.1: Zeige aktive/maximale Xtream-Account-Verbindungen: [X/Y]
@@ -1951,7 +2055,7 @@ class ScanState:
         self.vpn_links         = []
         self.cf_links          = []
         self.expiring_links    = []
-        self.adult_accounts    = []   # v21.3: Accounts mit Adult-Content für M3U+
+        self.adult_accounts    = []   #
         self.host_error_count  = {}
         self.last_host_request = {}
         self.host_links_count  = {}
@@ -1960,7 +2064,7 @@ class ScanState:
             "tvonly":         0,
             "vpn_de":         0,
             "cf":             0,
-            "adult":          0,   # v21.3: Adult-Treffer
+            "adult":          0,   #
             "kein_de":        0,
             "verbindung":     0,
             "timeout":        0,
@@ -1974,12 +2078,12 @@ class ScanState:
             "max_erreicht":   0,
             "cf_retry_ok":    0,
             "precheck_skip":  0,
-            # v19.6
+            #
             "trial_acc":      0,
             "format_skip":    0,
             "abgelaufen_bald":0,
             "sample_fail":    0,
-            # v19.9
+            #
             "expiring":       0,   # Ablauf-Vorwarnung (expiring_links.txt)
             "host_limit":     0,   # Max. Treffer pro Host erreicht
         }
@@ -1991,7 +2095,7 @@ class ScanState:
     def load_existing(self) -> int:
         """
         Lädt bereits bekannte Accounts aus den Ausgabedateien.
-        v20.0: Schlüssel = (username, password) – hostunabhängig.
+       
         Verhindert Re-Scan identischer Credentials auf anderen Hosts.
         """
         count = 0
@@ -2004,7 +2108,7 @@ class ScanState:
                     u  = qs.get("username", [None])[0]
                     pw = qs.get("password", [None])[0]
                     if u and pw:
-                        self.checked_keys.add((u, pw))   # v20.0: nur (u, pw)
+                        self.checked_keys.add((u, pw))   #
                         count += 1
         return count
 
@@ -2023,11 +2127,11 @@ class ScanState:
     def get_cf_profile(self, host: str) -> dict:
         """
         Gibt Browser-Profil für CF-Host zurück.
-        v21.0: Nutzt HeaderManager2026 – Chrome 136/147 rotierend.
+       
         Profil wird pro Host gecacht (konsistentes Fingerprint pro Session).
         """
         if host not in self._cf_profile:
-            # v21.1: gleichgewichtet – alle 4 Chrome-Profile gleich wahrscheinlich
+            #
             self._cf_profile[host] = random.choices(
                 range(len(HeaderManager2026.CHROME_PROFILES)),
                 weights=[25, 25, 25, 25], k=1
@@ -2133,7 +2237,7 @@ async def sample_channel_check(session, api: str, u: str, pw: str,
       name_bonus       Anzahl DE-Tier1-Treffer in Kanalnamen der Stichprobe.
     False wenn alle Stichproben-Streams tot sind.
 
-    v19.9: Kanalnamen der Stichprobe werden gegen _DE_TIER1 geprüft.
+   
     """
     raw = await _fetch_api(
         session, api,
@@ -2154,7 +2258,7 @@ async def sample_channel_check(session, api: str, u: str, pw: str,
     # Zufällige Stichprobe: max. 3 Streams testen
     sample = random.sample(streams, min(3, len(streams)))
 
-    # v19.9: Kanalnamen auf DE prüfen (alle Streams, nicht nur Stichprobe)
+    #
     name_sample = random.sample(streams, min(10, len(streams)))
     name_text   = " | ".join(s.get("name", "") for s in name_sample)
     name_bonus  = len(set(m.upper() for m in _DE_TIER1.findall(name_text)))
@@ -2204,7 +2308,7 @@ async def probe_stream_vpn(session, stream_url: str,
     url  = f"{stream_url}{'&' if '?' in stream_url else '?'}{cb}"
 
     # SSL: Alle Hosts → ssl_ctx mit CERT_NONE (Self-Signed akzeptieren)
-    # v21.5: Unified SSL handling für CF + non-CF
+    #
     ssl_param = ssl_ctx
 
     if is_cf:
@@ -2245,7 +2349,7 @@ async def _fetch_api(session, api: str, params: dict,
                      ssl_param=False) -> str:
     """
     Gibt Response-Text zurück oder leeren String bei Fehler.
-    v21.5: Separate sock_read-Timeout verhindert hängende Reads
+   
     bei langsamen Servern (port von jsonWithTimeout aus Bᴀᴘʜᴏᴍᴇᴛ).
     """
     try:
@@ -2280,7 +2384,7 @@ async def check_all_content(session, api: str, u: str, pw: str,
     """
     Ruft Live-Kategorien, VOD-Kategorien, Genres und Serien-Kategorien
     gleichzeitig ab (4 parallele Calls).
-    v21.3: Gibt zusätzlich adult_result zurück (is_adult, a_tier, a_score).
+   
     """
     live_params   = {"username": u, "password": pw,
                      "action":   "get_live_categories"}
@@ -2342,7 +2446,7 @@ async def check_all_content(session, api: str, u: str, pw: str,
         vod_is_de, vod_tier, vod_score = score_de_content(vod_names, vod_mode=True)
         vod_result = (vod_is_de, vod_tier, vod_score, True)
 
-    # v21.3: Adult-Erkennung (Live + VOD kombiniert)
+    #
     adult_result = (False, 0, 0)
     if ADULT_SCAN:
         all_cats = cat_names + " " + vod_names
@@ -2358,7 +2462,7 @@ async def check_all_content(session, api: str, u: str, pw: str,
 async def check_account(session, host: str, u: str, pw: str,
                         state: ScanState, ssl_ctx) -> tuple:
     """
-    Vollständige Account-Prüfung (v19.6).
+    Vollständige Account-Prüfung
 
     Neu:
       - is_trial Filter
@@ -2370,12 +2474,12 @@ async def check_account(session, host: str, u: str, pw: str,
       - Retry-After-Header bei 429
       - _null entfernt (war ungenutzt)
 
-    SSL: CF → ssl_ctx, non-CF → False (v19.5-Fix beibehalten)
+    SSL: CF → ssl_ctx, non-CF → False
     """
     t_start   = time.monotonic()
     api       = f"{host}/player_api.php"
     is_cf     = host in state._cf_hosts
-    ssl_param = ssl_ctx  # v21.5: Unified SSL (CERT_NONE für alle Hosts)
+    ssl_param = ssl_ctx  #
 
     if is_cf:
         profile = state.get_cf_profile(host)
@@ -2453,7 +2557,7 @@ async def check_account(session, host: str, u: str, pw: str,
         exp_ts   = user_info.get("exp_date")
         exp      = "unbegrenzt"
         exp_date = None
-        expiring = False   # v19.9: Ablauf-Vorwarnung
+        expiring = False   #
         if exp_ts:
             try:
                 exp_date = datetime.fromtimestamp(int(exp_ts))
@@ -2477,19 +2581,19 @@ async def check_account(session, host: str, u: str, pw: str,
             return None, "format_skip", False, False, 0, None, \
                    active, max_c, exp, "", {}
 
-        # --- Panel-Typ, Timezone, EPG, Country (v19.9) ---
+        # --- Panel-Typ, Timezone, EPG, Country
         tz       = server_info.get("timezone", "")
         panel    = server_info.get("server_name", "")
         tz_bonus = TZ_DE_BONUS if tz in DE_TIMEZONES else 0
         ptype    = detect_panel_type(server_info)
 
-        # v19.9: EPG-URL als DE-Signal
+        #
         epg_url = str(server_info.get("epg_url", "")).lower()
         if epg_url and (".de/" in epg_url or epg_url.endswith(".de")
                         or "epg.de" in epg_url or "/de/" in epg_url):
             tz_bonus += EPG_DE_BONUS
 
-        # v19.9: country-Feld als DE-Signal
+        #
         country = str(server_info.get("country", "")).upper().strip()
         if country in DE_COUNTRIES:
             tz_bonus += COUNTRY_DE_BONUS
@@ -2515,7 +2619,7 @@ async def check_account(session, host: str, u: str, pw: str,
         if not live_de:
             return None, "kein_de", False, False, 0, None, active, max_c, exp, "", {}
 
-        # --- Stichproben-Kanalcheck (v19.9: name_bonus) ---
+        # --- Stichproben-Kanalcheck
         if SAMPLE_CHECK:
             streams_ok, name_bonus = await sample_channel_check(
                 session, api, u, pw, api_hdrs, ssl_param, host
@@ -2552,9 +2656,9 @@ async def check_account(session, host: str, u: str, pw: str,
         meta = {"tz": tz, "panel": panel, "ptype": ptype,
                 "expiring": expiring, "exp_ts": exp_ts,
                 "http_code": 200,
-                "is_adult":  is_adult,   # v21.3
+                "is_adult":  is_adult,   #
                 "a_tier":    a_tier,
-                "u": u, "pw": pw}        # v21.3: für M3U+ Export benötigt
+                "u": u, "pw": pw}        #
         return (link, "ok", vpn_req, is_cf, live_tier,
                 category, active, max_c, exp, "", meta)
 
@@ -2579,7 +2683,7 @@ async def check_account(session, host: str, u: str, pw: str,
 
 
 # ==============================================================
-# ACCOUNT CHECK MIT CF-HANDLING (v19.9: kein Backoff bei CF=0)
+# ACCOUNT CHECK MIT CF-HANDLING
 # ==============================================================
 async def check_account_with_retry(session, host: str, u: str, pw: str,
                                    state: ScanState, ssl_ctx) -> tuple:
@@ -2705,7 +2809,7 @@ async def worker(session, state: ScanState, url: str, ssl_ctx):
                 state.stats["tcp_fehler"]    += 1
             return None
 
-    # Duplikat-Check (v20.0: hostunabhängig – nur username+password)
+    # Duplikat-Check
     key = (u, pw)
     async with state.lock:
         if key in state.checked_keys:
@@ -2719,7 +2823,7 @@ async def worker(session, state: ScanState, url: str, ssl_ctx):
             state.stats["host_geblockt"] += 1
             return None
 
-    # v19.9: Host-Treffer-Limit (Ergebnis-Dedup)
+    #
     if MAX_LINKS_PER_HOST > 0:
         async with state.lock:
             if state.host_links_count.get(host, 0) >= MAX_LINKS_PER_HOST:
@@ -2747,7 +2851,7 @@ async def worker(session, state: ScanState, url: str, ssl_ctx):
         expiring = meta.get("expiring", False)
 
         async with state.lock:
-            # v19.9: Nochmal prüfen (race condition zwischen Semaphore und Lock)
+            #
             if MAX_LINKS_PER_HOST > 0 and \
                state.host_links_count.get(host, 0) >= MAX_LINKS_PER_HOST:
                 state.stats["host_limit"] += 1
@@ -2771,7 +2875,7 @@ async def worker(session, state: ScanState, url: str, ssl_ctx):
                 state.stats["tvonly"] += 1
                 dest = "tvonly"
 
-            # v19.9: Treffer pro Host zählen
+            #
             state.host_links_count[host] = state.host_links_count.get(host, 0) + 1
 
         # Streaming-Write (sofort, ausserhalb des State-Locks)
@@ -2784,7 +2888,7 @@ async def worker(session, state: ScanState, url: str, ssl_ctx):
         if dest and dest in fname_map:
             await _append_link(fname_map[dest], link)
 
-        # v21.3: Adult-Account für M3U+ Export merken
+        #
         is_adult = meta.get("is_adult", False)
         a_tier   = meta.get("a_tier",   0)
         if is_adult or dest == "free":
@@ -2809,8 +2913,8 @@ async def worker(session, state: ScanState, url: str, ssl_ctx):
             "ptype":    meta.get("ptype",    ""),
             "exp_ts":   meta.get("exp_ts",   None),
             "http_code":meta.get("http_code",200),
-            "is_adult": is_adult,  # v21.3
-            "a_tier":   a_tier,    # v21.3
+            "is_adult": is_adult,  #
+            "a_tier":   a_tier,    #
         }
 
     if stat_key == "cf":
@@ -2880,7 +2984,7 @@ class ScanConfig:
         self.sample_check = False
         self.precheck     = True
         self.filter_trial = True
-        self.exp_min_days = 3     # v21.0 FIX: war 0 → Mindest-Vorwarnung
+        self.exp_min_days = 3     #
         self.cf_retries   = 0
         self.mode_name    = "Schnell"
 
@@ -2901,7 +3005,7 @@ class ScanConfig:
         self.precheck     = True
         self.filter_trial = True
         self.exp_min_days = 7
-        self.cf_retries   = 0     # v21.0 FIX: war 3 → Pydroid3-Konsistenz
+        self.cf_retries   = 0     #
         self.mode_name    = "Gründlich"
 
     def apply_preset_cf_debug(self):
@@ -2911,7 +3015,7 @@ class ScanConfig:
         self.precheck     = False
         self.filter_trial = False
         self.exp_min_days = 0
-        self.cf_retries   = 0     # v21.0 FIX: war 3 → Pydroid3 löst CF nicht
+        self.cf_retries   = 0     #
         self.cf_debug     = True
         self.mode_name    = "CF-Debug"
 
@@ -2929,7 +3033,7 @@ class EnvInfo:
         self.checkpoint_proc= 0
         self.output_files   = []
         self.has_cf_file    = False
-        # v21.2: Aufschlüsselung pro Datei für Welcome-Screen
+        #
         self.file_counts: dict = {}   # fname → int
 
     def detect(self):
@@ -2962,7 +3066,7 @@ class EnvInfo:
 def _auto_configure(env: EnvInfo, cfg: ScanConfig):
     """
     Leitet optimale Einstellungen aus der Umgebung ab.
-    v20.0: Setzt workers_auto = True damit die adaptive Host-Berechnung greift.
+   
     Logik:
       - Cloudflare-Hosts → mehr Retries
       - Sample-Check nur bei wenigen CF-Hosts (Performance)
@@ -2970,7 +3074,7 @@ def _auto_configure(env: EnvInfo, cfg: ScanConfig):
     """
     cfg.apply_preset_normal()
     cfg.mode_name    = "Auto"
-    cfg.workers_auto = True      # v20.0: adaptive Workers-Berechnung aktivieren
+    cfg.workers_auto = True      #
     if env.cf_hosts > 0:
         cfg.cf_retries = 0  # immer 0 (Pydroid3)
     # Sample-Check nur bei wenigen CF-Hosts (Performance)
@@ -3298,12 +3402,12 @@ def _manual_setup(cfg: ScanConfig):
     try:
         w = int(raw)
         if w <= 0:
-            cfg.workers = WORKERS   # v20.0: 0 → Standardwert, kein Auto
+            cfg.workers = WORKERS   #
         else:
             cfg.workers = max(1, min(200, w))
     except ValueError:
         cfg.workers = WORKERS
-    cfg.workers_auto = False        # v20.0: manueller Modus → niemals Auto-Formel
+    cfg.workers_auto = False        #
 
     cfg.mode_name = "Manuell"
 
@@ -3314,7 +3418,7 @@ def _manual_setup(cfg: ScanConfig):
 def _input_menu() -> list:
     """
     Bietet vier Eingabemethoden an.
-    v21.5: Neu: [4] Portal + Credentials Format (Bᴀᴘʜᴏᴍᴇᴛ-Port).
+   
     Gibt Liste von Zeilen zurück (für Regex-Extraktion).
     """
     _section("LINK-EINGABE")
@@ -3430,10 +3534,6 @@ def _confirm_screen(cfg: ScanConfig, total: int,
     if env.cf_hosts > 0:
         print(_ok_row("CF-Blacklist", "Bekannte CF-Hosts überspringen", cfg.cf_blacklist))
 
-    print()
-    print(c(C.DIM, f"  Ausgabe:  {OUTPUT_FILE}  /  {TVONLY_FILE}"))
-    print(c(C.DIM, f"  VPN:      {VPN_FILE}"))
-    print(c(C.DIM, f"  CF:       {CF_FILE}"))
 
     ans = _prompt("\n  Scan starten?", ["J", "N"], "J")
     return ans == "J"
@@ -3461,7 +3561,7 @@ def _resume_menu(env: EnvInfo) -> bool:
 # MENU: HAUPT-ENTRY-POINT (ersetzt altes read_input + main)
 # ==============================================================
 # ==============================================================
-# SORTIERUNG DER AUSGABEDATEIEN NACH HOSTER (v20.0)
+# SORTIERUNG DER AUSGABEDATEIEN NACH HOSTER
 # ==============================================================
 def sort_output_files() -> dict:
     """
@@ -3590,7 +3690,7 @@ def _run_sort(env: EnvInfo):
     input(c(C.DIM, "\n  [ENTER] Zurück zum Menu..."))
 
 # ==============================================================
-# DUPLIKAT-BEREINIGUNG DER AUSGABEDATEIEN (v20.0)
+# DUPLIKAT-BEREINIGUNG DER AUSGABEDATEIEN
 # ==============================================================
 def dedup_output_files() -> dict:
     """
@@ -3721,7 +3821,7 @@ def _run_dedup(env: EnvInfo):
 
 def _run_export(env: EnvInfo):
     """
-    [E] M3U+ Export – v21.4
+    [E] M3U+ Export –
     Liest Accounts aus free_links.txt / free_links_TVonly.txt /
     vpn_links.txt. User wählt einzelne Accounts, Bereiche oder alle.
     Startet dann generate_m3u_plus_for_account() pro Account.
@@ -3862,7 +3962,7 @@ def _run_export(env: EnvInfo):
                         f"| {_shorten(e['u'],16)} ..."), end="", flush=True)
 
                 is_cf  = host_s in load_cf_hosts()
-                ssl_p  = ssl_ctx  # v21.5: Unified SSL (CERT_NONE für alle)
+                ssl_p  = ssl_ctx  #
                 hdrs   = (HeaderManager2026.get_chrome_headers()
                           if is_cf else
                           {"User-Agent": random.choice(BROWSER_USER_AGENTS),
@@ -3978,7 +4078,8 @@ def run_menu() -> ScanConfig:
                 already_known = env.known_links
                 print(c(C.WHITE, f"  {total} Links gefunden │ {unique_hosts} unique Hoster │ {already_known} bereits bekannt (werden übersprungen)"))
                 if cfg.workers_auto:
-                    workers_actual = min(max(unique_hosts // 3, 4), 4 if IS_MOBILE else 20)
+                    worker_info = _determine_optimal_workers(unique_hosts, total)
+                    workers_actual = worker_info['workers']
                 else:
                     workers_actual = cfg.workers
                 if not _confirm_screen(cfg, total, workers_actual, env):
@@ -4068,7 +4169,7 @@ def run_menu() -> ScanConfig:
 
         total = len(cfg.input_urls)
 
-        # v21.2: Hoster-Breakdown-Preview vor Bestätigung
+        #
         unique_hosts = len({urlparse(u).netloc for u in cfg.input_urls})
         already_known = env.known_links
         print()
@@ -4089,7 +4190,8 @@ def run_menu() -> ScanConfig:
 
         # Adaptive Workers-Anzahl
         if cfg.workers_auto:
-            workers_actual = min(max(unique_hosts // 3, 4), 4 if IS_MOBILE else 20)
+            worker_info = _determine_optimal_workers(unique_hosts, total)
+            workers_actual = worker_info['workers']
         else:
             workers_actual = cfg.workers
 
@@ -4110,7 +4212,7 @@ def run_menu() -> ScanConfig:
 # ==============================================================
 def save_links(state: ScanState):
     """
-    v19.9: Streaming-Output hat Links bereits geschrieben.
+   
     Hier nur noch Zusammenfassung und CF-Hosts persistieren.
     """
     entries = [
@@ -4178,7 +4280,7 @@ async def _async_main():
     cfg = run_menu()
     if cfg is None:
         return
-    _scan_start = time.monotonic()   # v21.2: Laufzeit-Messung
+    _scan_start = time.monotonic()   #
 
     # ── Laufzeit-Konfiguration anwenden ───────────────────────
     global VPN_CHECK, SAMPLE_CHECK, PRECHECK_ENABLED, FILTER_TRIAL
@@ -4190,7 +4292,7 @@ async def _async_main():
     EXP_MIN_DAYS     = cfg.exp_min_days
     CF_MAX_RETRIES   = cfg.cf_retries
 
-    # ── v19.9: Streaming-Output Locks initialisieren ──────────
+    # ──
     _init_file_locks()
 
     # ── State ─────────────────────────────────────────────────
@@ -4229,9 +4331,9 @@ async def _async_main():
                 print(c(C.YELLOW, f"  [CF-Blacklist] {skipped_cf} Links auf bekannten CF-Hosts übersprungen."))
             total = len(cfg.input_urls)
 
-    # ── v20.0: Pre-Deduplication nach username+password (hostunabhängig) ──
+    # ──
     # Verhindert, dass identische Credentials mit unterschiedlichen Hosts
-    # als separate Einträge behandelt werden (Kern-Fix v20.0).
+    # als separate Einträge behandelt werden (Kern-Fix
     urls_raw = cfg.input_urls
     urls_filtered = []
     pre_skip_dup  = 0
@@ -4242,7 +4344,7 @@ async def _async_main():
         pw = qs.get("password", [None])[0]
         if not u or not pw:
             continue
-        key = (u, pw)                          # v20.0: hostunabhängiger Key
+        key = (u, pw)                          #
         if key in state.checked_keys or key in seen_pre:
             pre_skip_dup += 1
             continue
@@ -4273,7 +4375,7 @@ async def _async_main():
     ) as session:
         sem = asyncio.Semaphore(cfg.workers)
 
-        # v19.9: Harter Task-Timeout-Wrapper
+        #
         _task_timeout = TIMEOUT * TASK_TIMEOUT_MULT
 
         async def bound(url_str):
@@ -4290,7 +4392,7 @@ async def _async_main():
 
         tasks   = [bound(u) for u in cfg.input_urls]
 
-        # ── Mobile-optimierte tqdm Formatierung (v21.5) ──────────────────────
+        # ── Mobile-optimierte tqdm Formatierung
         if IS_MOBILE:
             bar_fmt = "{desc} {percentage:3.0f}% |{bar}|"
             tqdm_kwargs = {
@@ -4318,7 +4420,7 @@ async def _async_main():
             res = await coro
             processed += 1
 
-            # v21.5: Mobile-optimiertes Postfix
+            #
             s = state.stats
             if IS_MOBILE:
                 # Nur die wichtigsten Metriken auf Mobile
@@ -4339,13 +4441,13 @@ async def _async_main():
             if not res or not res.get("dest"):
                 continue
 
-            # v21.1: Einzeilige Ausgabe – _format_hit_oneline() übernimmt alles
+            #
             # v28.1: Zeigt jetzt Xtream-Account Verbindungen [active/max] an
             hit_str = _format_hit_oneline(res)
             if hit_str:
                 tqdm.write(hit_str)
 
-        # ── Output Buffering Flush (v21.5) ─────────────────────
+        # ── Output Buffering Flush
         # Schreibe alle gepufferten Links bevor Session schließt
         await _flush_all_buffers()
 
@@ -4359,7 +4461,7 @@ async def _async_main():
     print()
     save_links(state)
 
-    # ── v21.2: Laufzeit + Trefferquote ───────────────────────
+    # ──
     _scan_elapsed = time.monotonic() - _scan_start
     _total_proc   = sum(state.stats.values())
     _total_hits   = (state.stats["neu_de"] + state.stats["tvonly"] +
@@ -4383,7 +4485,7 @@ async def _async_main():
 
     # v28.1: Adult-Links Verweis entfernt (Links werden nicht mehr gespeichert)
 
-    # ── v21.2: Automatisches Dedup-Angebot nach Scan ─────────
+    # ──
     if _total_hits > 0:
         print()
         ans_d = input(c(C.CYAN,
@@ -4406,9 +4508,9 @@ async def _async_main():
 
 
 # ==============================================================
-# LINK-VERWALTUNG MIT ZUWEISUNGS-LEDGER (v21.5 NEU)
+# LINK-VERWALTUNG MIT ZUWEISUNGS-LEDGER
 # ==============================================================
-# LINK-VERWALTUNG MIT ZUWEISUNGS-LEDGER (v21.5 NEU)
+# LINK-VERWALTUNG MIT ZUWEISUNGS-LEDGER
 # ==============================================================
 LEDGER_FILE = "link_ledger.json"  # Speichert user:pass → Zuweisungen
 
@@ -4601,7 +4703,7 @@ def _input_multi_links(prompt: str = "Links paste (mehrere ok) oder [A] alle aus
 
 
 class LinkLedger:
-    """v21.5 erweiterte Kontenverwaltung mit Status, Notizen, Geräte-Zuordnung und Kontaktdaten"""
+    """Erweiterte Kontenverwaltung mit Status, Notizen, Geräte-Zuordnung und Kontaktdaten"""
     def __init__(self):
         self.data = {}
         self.contacts = {}
@@ -4805,7 +4907,7 @@ class LinkLedger:
 
 
 class LinkStatusChecker:
-    """v21.5 asynchrone Batch-Status-Checks mit Caching"""
+    """Asynchrone Batch-Status-Checks mit Caching"""
     def __init__(self, cache_ttl: int = 3600):
         self.cache = {}
         self.cache_ttl = cache_ttl
@@ -4958,10 +5060,10 @@ def _check_link_status(url: str) -> dict:
 
 
 def _run_link_management(ledger: LinkLedger, env: EnvInfo):
-    """[V] v21.5 erweiterte Link-Verwaltung mit Status, Kontakte und Import/Export"""
+    """Erweiterte Link-Verwaltung mit Status, Kontakte und Import/Export"""
     while True:
         choice = _submenu(
-            "LINK-VERWALTUNG v21.5",
+            "LINK-VERWALTUNG",
             [
                 ("STATUS & CHECKS", [
                     ("1", "Link-Status abfragen (Batch)"),
