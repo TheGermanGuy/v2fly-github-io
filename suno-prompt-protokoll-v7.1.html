@@ -379,14 +379,16 @@
   <div class="header">
     <div class="header-badge">⚡ Suno AI Prompt Engine · v7.1 — v4.5-all (Free) Edition</div>
     <h1>PROMPT PROTOKOLL v7.1</h1>
-    <div class="header-sub">Gemini · OpenAI · Claude · Dynamische 4-Phasen-KI · 55+ Genres · Exakt auf Suno v4.5-all (Free) abgestimmt</div>
+    <div class="header-sub">Gemini · OpenAI · Claude · Dynamische 4-Phasen-KI · 65+ Genres inkl. Deutschrap-Subgenres · Exakt auf Suno v4.5-all (Free) abgestimmt</div>
     <div class="change-log">
       <span class="change-tag">✓ Nativer JSON-Modus (OpenAI &amp; Gemini)</span>
       <span class="change-tag">✓ Gestapelte Tags statt Pipes</span>
       <span class="change-tag">✓ Gesangsdynamik-Regeln</span>
       <span class="change-tag">✓ Nur v4.5-all Free-Features</span>
       <span class="change-tag">✓ Fließtext-Style statt Tag-Listen</span>
-      <span class="change-tag">✓ 55+ Genres</span>
+      <span class="change-tag">✓ Deep-Analyse: Genre/BPM/Flow/Hook</span>
+      <span class="change-tag">✓ Deutschrap-Subgenres &amp; Hybride</span>
+      <span class="change-tag">✓ 65+ Genres</span>
       <span class="change-tag">✓ Export JSON</span>
       <span class="change-tag">✓ Temperatur-Control</span>
     </div>
@@ -524,6 +526,22 @@
             <label>Genre <span class="hint">Auto-füllt BPM, Key &amp; Instrumente</span></label>
             <select id="metaGenre" onchange="applyGenreDefaults()">
               <option value="">– auswählen –</option>
+              <optgroup label="🇩🇪 Deutschrap / Deutscher HipHop">
+                <option>Deutschrap (Modern)</option>
+                <option>Straßenrap</option>
+                <option>Deutscher Emo Rap</option>
+                <option>Deutscher Cloud Rap</option>
+                <option>Deutscher Drill</option>
+                <option>Afrotrap (Deutsch)</option>
+                <option>Old School Deutschrap (Boom Bap)</option>
+                <option>Conscious Deutschrap</option>
+                <option>Deutscher Pop-Rap</option>
+                <option>Rage Trap (Deutsch)</option>
+                <option>Hybrid: Emo x Cloud Rap</option>
+                <option>Hybrid: Deutschrap x R&amp;B</option>
+                <option>Hybrid: Rave Rap (Techno)</option>
+                <option>Hybrid: Emo Rap x Rock</option>
+              </optgroup>
               <optgroup label="🎤 Rap / Hip-Hop">
                 <option>Cloud Rap</option>
                 <option>Dark Trap</option>
@@ -949,6 +967,7 @@ let currentModels    = { gemini: 'gemini-2.5-flash', openai: 'gpt-4o', claude: '
 let lastStylePrompt  = '';
 let lastLyrics       = '';
 let lastMeta         = {};
+let lastAnalysis     = null;
 
 // ════════════════════════════════════════════
 // DATA CONSTANTS — EXPANDED
@@ -993,12 +1012,30 @@ const INST_FX = [
   'Field Recordings','Rain / Nature','Crowd Noise','Lo-Fi Filter'
 ];
 
+// lang  = setzt die Gesangssprache automatisch mit
+// desc  = Genre-Klangprofil, fließt als Kontext in den Style Prompt ein
+const DE_LANG = 'German lyrics, sing in German, German phonetics';
 const GENRE_DEFAULTS = {
-  'Cloud Rap':          { bpm: 85,  key: 'key of Am',  inst: ['808s','Synth Pads','Hi-Hats','Ambient Pads'] },
+  // 🇩🇪 Deutschrap / Deutscher HipHop
+  'Deutschrap (Modern)':              { bpm: 95,  key: 'key of Cm', inst: ['808s','Trap Drums','Synth Pads','Sub Bass'], lang: DE_LANG, desc: 'modern German rap with punchy 808-driven production, crisp hi-hats and clear German diction over contemporary trap-influenced beats' },
+  'Straßenrap':                       { bpm: 90,  key: 'key of Gm', inst: ['808s','Trap Drums','Piano','Strings'], lang: DE_LANG, desc: 'gritty German street rap, dark piano and string loops, hard-hitting 808s, raw aggressive authentic delivery' },
+  'Deutscher Emo Rap':                { bpm: 75,  key: 'key of Em', inst: ['Acoustic Guitar','808s','Trap Drums','Reverb Swells'], lang: DE_LANG, desc: 'melancholic German emo rap, sad guitar loops over slow trap drums, vulnerable half-sung autotuned vocals, lo-fi warmth and heartbreak atmosphere' },
+  'Deutscher Cloud Rap':              { bpm: 82,  key: 'key of Am', inst: ['Synth Pads','808s','Atmospheric Pads','Reverb Swells'], lang: DE_LANG, desc: 'hazy German cloud rap, ethereal washed-out synth pads, dreamy reverb-drenched atmosphere, laid-back floating autotuned flow' },
+  'Deutscher Drill':                  { bpm: 67,  key: 'key of Cm', inst: ['808s','Trap Drums','Sub Bass','Strings'], lang: DE_LANG, desc: 'German drill, sliding 808 bass, ominous string and bell melodies, aggressive syncopated double-time flow' },
+  'Afrotrap (Deutsch)':               { bpm: 102, key: 'key of Am', inst: ['Percussion','808s','Synth Lead','Hi-Hats'], lang: DE_LANG, desc: 'German afrotrap, bouncy afro-inspired percussion grooves fused with trap 808s, sunny melodic catchy hooks' },
+  'Old School Deutschrap (Boom Bap)': { bpm: 92,  key: 'key of Fm', inst: ['Boom Bap Drums','Piano','Bass Guitar','Vinyl Crackle'], lang: DE_LANG, desc: '90s German boom bap, dusty sample-based beat with vinyl crackle, head-nod groove, punchline-focused old school delivery' },
+  'Conscious Deutschrap':             { bpm: 88,  key: 'key of Dm', inst: ['Live Drums','Rhodes','Bass Guitar','Strings'], lang: DE_LANG, desc: 'thoughtful German conscious rap, warm soulful instrumentation, organic live drums, reflective storytelling delivery' },
+  'Deutscher Pop-Rap':                { bpm: 105, key: 'key of C',  inst: ['Synth Pads','Drum Machine','Bass Guitar','Piano'], lang: DE_LANG, desc: 'radio-friendly German pop rap, bright melodic hooks, polished clean production, sung chorus with rapped verses' },
+  'Rage Trap (Deutsch)':              { bpm: 140, key: 'key of Am', inst: ['Synth Lead','808s','Trap Drums','Glitch FX'], lang: DE_LANG, desc: 'high-energy German rage trap, distorted aggressive saw synth leads, pounding 808s, chaotic adrenaline-fueled shouted delivery' },
+  'Hybrid: Emo x Cloud Rap':          { bpm: 78,  key: 'key of Bm', inst: ['Acoustic Guitar','Synth Pads','808s','Reverb Swells'], lang: DE_LANG, desc: 'hybrid of emo rap and cloud rap, sad guitar melodies floating in ethereal reverb-heavy pads, melancholic autotuned vocals drifting over slow trap drums' },
+  'Hybrid: Deutschrap x R&B':         { bpm: 92,  key: 'key of Am', inst: ['Rhodes','808s','Hi-Hats','Synth Pads'], lang: DE_LANG, desc: 'German rap fused with smooth R&B, silky sung hooks, warm electric piano, rap verses gliding over soulful trap-soul production' },
+  'Hybrid: Rave Rap (Techno)':        { bpm: 142, key: 'key of Am', inst: ['Drum Machine','Synth Arp','Sub Bass','Synth Lead'], lang: DE_LANG, desc: 'German rave rap, driving four-on-the-floor techno beat fused with rap vocals, hypnotic arps, euphoric peak-time club energy' },
+  'Hybrid: Emo Rap x Rock':           { bpm: 95,  key: 'key of Em', inst: ['Electric Guitar','Live Drums','808s','Distorted Guitar'], lang: DE_LANG, desc: 'emo rap rock hybrid, pop-punk guitar riffs colliding with trap drums and 808s, angsty shouted-sung vocals full of raw emotion' },
+  'Cloud Rap':          { bpm: 85,  key: 'key of Am',  inst: ['808s','Synth Pads','Hi-Hats','Atmospheric Pads'] },
   'Dark Trap':          { bpm: 80,  key: 'key of Cm',  inst: ['808s','Trap Drums','Synth Pads','Sub Bass'] },
   'Cinematic Trap':     { bpm: 83,  key: 'key of Dm',  inst: ['Strings','808s','Cinematic FX','Brass','Trap Drums'] },
   'Melodic Rap':        { bpm: 90,  key: 'key of Am',  inst: ['808s','Piano','Synth Pads','Trap Drums'] },
-  'Boom Bap':           { bpm: 92,  key: 'key of Fm',  inst: ['Live Drums','Piano','Bass Guitar','Sample'] },
+  'Boom Bap':           { bpm: 92,  key: 'key of Fm',  inst: ['Boom Bap Drums','Piano','Bass Guitar','Vinyl Crackle'] },
   'Conscious Hip-Hop':  { bpm: 88,  key: 'key of Dm',  inst: ['Live Drums','Piano','Bass Guitar','Rhodes'] },
   'Lo-Fi Hip-Hop':      { bpm: 75,  key: 'key of Dm',  inst: ['Piano','Rhodes','Vinyl Crackle','Tape Saturation','Brushed Drums'] },
   'Drill':              { bpm: 67,  key: 'key of Cm',  inst: ['808s','Trap Drums','Strings','Hi-Hats'] },
@@ -1024,10 +1061,10 @@ const GENRE_DEFAULTS = {
   'Hyperpop':           { bpm: 145, key: 'key of Am',  inst: ['808s','Synth Lead','Glitch FX','Drum Machine','Synth Arp'] },
   'K-Pop':              { bpm: 120, key: 'key of Am',  inst: ['Synth Pads','Drum Machine','Bass Guitar','Layered Vocals'] },
   'House':              { bpm: 126, key: 'key of Am',  inst: ['Piano','Sub Bass','Hi-Hats','Drum Machine','Organ'] },
-  'Deep House':         { bpm: 122, key: 'key of Fm',  inst: ['Piano','Deep Bass','Ambient Pads','Hi-Hats'] },
+  'Deep House':         { bpm: 122, key: 'key of Fm',  inst: ['Piano','Deep Bass','Atmospheric Pads','Hi-Hats'] },
   'Tech House':         { bpm: 128, key: 'key of Am',  inst: ['Synth Bass','Drum Machine','Percussion','Riser FX'] },
   'Progressive House':  { bpm: 130, key: 'key of Am',  inst: ['Synth Lead','Synth Pads','Sub Bass','Drum Machine'] },
-  'Techno':             { bpm: 140, key: 'key of Am',  inst: ['Synth Arp','Drum Machine','Ambient Textures','Impact Hits'] },
+  'Techno':             { bpm: 140, key: 'key of Am',  inst: ['Synth Arp','Drum Machine','Atmospheric Pads','Impact Hits'] },
   'Minimal Techno':     { bpm: 135, key: 'key of Am',  inst: ['Drum Machine','Percussion','Synth Bass','Delay Trails'] },
   'Industrial Techno':  { bpm: 145, key: 'key of Cm',  inst: ['Drum Machine','Impact Hits','Distorted Bass','Glitch FX'] },
   'Drum & Bass':        { bpm: 174, key: 'key of Am',  inst: ['Breakbeat','Sub Bass','Synth Pads','Riser FX'] },
@@ -1042,7 +1079,7 @@ const GENRE_DEFAULTS = {
   'Darkwave':           { bpm: 110, key: 'key of Cm',  inst: ['Synth Pads','Drum Machine','Electric Guitar','Organ'] },
   'Vaporwave':          { bpm: 80,  key: 'key of Dm',  inst: ['Rhodes','Vinyl Crackle','Synth Pads','Tape Saturation'] },
   'Afrobeats':          { bpm: 105, key: 'key of G',   inst: ['Live Drums','Bass Guitar','Acoustic Guitar','Percussion'] },
-  'Amapiano':           { bpm: 112, key: 'key of Am',  inst: ['Piano','Deep Bass','Log Drum','Live Drums'] },
+  'Amapiano':           { bpm: 112, key: 'key of Am',  inst: ['Piano','Deep Bass','Percussion','Live Drums'] },
   'Reggaeton':          { bpm: 95,  key: 'key of Am',  inst: ['808s','Bass Guitar','Synth Pads','Percussion'] },
   'Latin Trap':         { bpm: 88,  key: 'key of Cm',  inst: ['808s','Trap Drums','Brass','Piano'] },
   'Dancehall':          { bpm: 100, key: 'key of Am',  inst: ['Drum Machine','Bass Guitar','Synth Pads','Percussion'] },
@@ -1051,7 +1088,7 @@ const GENRE_DEFAULTS = {
   'Post-Punk':          { bpm: 115, key: 'key of Dm',  inst: ['Electric Guitar','Live Drums','Bass Guitar','Synth Pads'] },
   'Metalcore':          { bpm: 160, key: 'key of Em',  inst: ['Distorted Guitar','Acoustic Drums','Bass Guitar','Impact Hits'] },
   'Jazz':               { bpm: 130, key: 'key of Fm',  inst: ['Piano','Saxophone','Live Drums','Upright Bass','Trumpet'] },
-  'Nu Jazz':            { bpm: 100, key: 'key of Fm',  inst: ['Piano','Double Bass','Brushed Drums','Synth Pads'] },
+  'Nu Jazz':            { bpm: 100, key: 'key of Fm',  inst: ['Piano','Upright Bass','Brushed Drums','Synth Pads'] },
   'Neo-Classical':      { bpm: 72,  key: 'key of Am',  inst: ['Piano','Strings','Cello','Violin'] },
   'Cinematic Score':    { bpm: 75,  key: 'key of Cm',  inst: ['Strings','Choir','Brass','Cinematic FX','Piano'] },
   'Gospel':             { bpm: 95,  key: 'key of Eb',  inst: ['Piano','Gospel Choir','Live Drums','Claps','Organ'] },
@@ -1253,6 +1290,15 @@ function setChips(ids, values) {
     });
   });
 }
+// Additiv: aktiviert passende Chips (case-insensitive), ohne bestehende Auswahl zu löschen
+function addChips(ids, values) {
+  const lower = values.map(v => String(v).toLowerCase());
+  ids.forEach(id => {
+    document.querySelectorAll(`#${id} .chip`).forEach(c => {
+      if (lower.includes(c.dataset.value.toLowerCase())) c.classList.add('active');
+    });
+  });
+}
 
 // ════════════════════════════════════════════
 // COLLAPSIBLE
@@ -1319,6 +1365,7 @@ function applyGenreDefaults() {
   if (d.bpm)  setBpm(d.bpm);
   if (d.key)  document.getElementById('metaKey').value = d.key;
   if (d.inst) setChips(['instChipsDrums','instChipsKeys','instChipsBass','instChipsOrch','instChipsFX'], d.inst);
+  if (d.lang) document.getElementById('metaLang').value = d.lang;
 }
 
 // ════════════════════════════════════════════
@@ -1358,6 +1405,8 @@ function buildStyleSystemPrompt(meta) {
   const parts = [];
 
   if (meta.genre)       parts.push(`Genre: ${meta.genre}`);
+  const genreProfile = GENRE_DEFAULTS[meta.genre]?.desc;
+  if (genreProfile)     parts.push(`Genre-Klangprofil: ${genreProfile}`);
   if (meta.era)         parts.push(`Ära/Sound: ${meta.era}`);
   if (meta.bpm)         parts.push(`BPM: ${meta.bpm}`);
   if (meta.key)         parts.push(`Tonart: ${meta.key}`);
@@ -1388,6 +1437,7 @@ STIL-VORGABEN (KRITISCH FÜR v4.5-ALL):
 - Sprachhinweis als eigenen Satz einbauen, z.B. "The lyrics are sung in German."
 - Artist-Referenzen abstrahieren: Klangeigenschaften ableiten und beschreiben, Künstlernamen NIEMALS ausgeben.
 - Keine Wiederholungen, keine Meta-Kommentare, maximale Informationsdichte pro Zeichen.
+- Falls im Input eine KI-ANALYSE enthalten ist: Nutze deren Felder (genre_primary/genre_hybrid, bpm_target, key_suggestion, instrument_suggestions, flow_analysis, energy_flow) zur Präzisierung — die explizit gesetzten SONG PARAMETER haben bei Widersprüchen IMMER Vorrang.
 
 SONG PARAMETER:
 ${parts.join('\n')}
@@ -1420,6 +1470,13 @@ GESANGSDYNAMIK (STRIKT UMSETZEN):
 - AD-LIBS müssen korrekt in runden Klammern abgebildet werden, z.B. (yeah), (oh-oh), (uh), (come on). Runde Klammern sind ausschließlich für Ad-libs und Background-Vocals reserviert.
 - NACHDRUCK UND EMOTIONALE SPITZEN durch GROSSBUCHSTABEN und Ausrufezeichen erzwingen, z.B. "ich lass dich NIEMALS los!" — gezielt an Höhepunkten, nicht flächendeckend.
 
+KI-ANALYSE-NUTZUNG (falls im Input eine KI-ANALYSE enthalten ist):
+- climax_section → in dieser Sektion die gestapelten Power-Tags maximieren ([Belt], [Emotional Peak])
+- hook_line → diese Zeile mit gestapeltem [Hook]-Tag markieren
+- adlib_spots → an diesen Stellen Ad-libs in runden Klammern platzieren
+- emphasis_lines → in diesen Zeilen Nachdruck via GROSSBUCHSTABEN/Ausrufezeichen setzen (Wörter unverändert)
+- flow_analysis → Stil-Tags ([Rap], [Melodic], [Breathy]) am erkannten Flow ausrichten
+
 QUALITÄTS-PRINZIPIEN:
 - Annotations sollen die emotionale Tiefe und den Klangcharakter VERSTÄRKEN, nicht dekorieren
 - Stil-Tags nur, wo sie einen echten klanglichen Unterschied machen
@@ -1437,7 +1494,9 @@ Antworte NUR mit dem fertigen Annotated Lyrics Block. Keine Erklärungen, keine 
 }
 
 function buildAnalysisSystemPrompt() {
-  return `Du analysierst einen Songtext für Suno AI-Optimierung.
+  return `Du bist ein Musikproduzent und A&R-Analyst. Du analysierst einen Songtext tiefgehend für Suno AI-Optimierung (Modell v4.5-all).
+Analysiere dabei: Silbendichte und Zeilenlängen (→ BPM/Flow), Wortwahl und Bildsprache (→ Genre/Mood), emotionale Dramaturgie (→ Klimax, Dynamik), Wiederholungsmuster (→ Hook), Szenenbilder (→ Instrumentierung).
+Beziehe deutsche Rap-Subgenres explizit in die Genre-Bestimmung ein (z.B. Deutschrap, Straßenrap, Emo Rap, Cloud Rap, Drill, Afrotrap, Rage Trap sowie Hybride wie Emo x Cloud oder Rap x R&B).
 Antworte NUR mit einem validen JSON-Objekt. Kein Markdown, keine Backticks, kein Präfix, kein Suffix.
 Exakte JSON-Struktur:
 {
@@ -1448,7 +1507,22 @@ Exakte JSON-Struktur:
   "dominant_theme": "Thema des Songs in max. 8 Wörtern",
   "line_count": 24,
   "language": "erkannte Sprache(n)",
+  "genre_primary": "präzisestes Genre/Subgenre für diesen Text",
+  "genre_secondary": "zweitbeste Genre-Option oder null",
+  "genre_hybrid": "Hybrid-Empfehlung wie 'Emo Rap x Cloud Rap' oder null",
+  "genre_confidence": 80,
+  "bpm_min": 70,
+  "bpm_max": 90,
+  "bpm_target": 80,
+  "bpm_reasoning": "Begründung über Silbendichte/Pace in 1 Satz",
+  "key_suggestion": "exakt im Format 'key of Am' (Moll für dunkle, Dur für helle Texte)",
+  "instrument_suggestions": ["4-6 konkrete Instrumente/Sounds passend zu Stimmung und Genre"],
   "vocal_suggestion": "Konkreter Gesangsstil-Vorschlag passend zum Text",
+  "flow_analysis": "Silbendichte, Pace und Flow-Typ (z.B. laid-back, double-time, melodisch) in 1-2 Sätzen",
+  "hook_line": "die eingängigste/wiederholteste Zeile wortwörtlich aus dem Text",
+  "climax_section": "Sektion des emotionalen Höhepunkts, z.B. 'CHORUS 2' oder 'BRIDGE'",
+  "adlib_spots": ["2-4 Textstellen (Zeilen-Zitat gekürzt), die sich für Ad-libs in runden Klammern eignen"],
+  "emphasis_lines": ["1-3 Zeilen (wortwörtlich), die Nachdruck via GROSSBUCHSTABEN/Ausrufezeichen verdienen"],
   "structure_quality": 85,
   "suno_readiness": 78,
   "suggestions": [
@@ -1532,6 +1606,43 @@ function renderAnalysis(d) {
       <div class="a-card-value">${d.language||'—'}</div>
     </div>
     <div class="a-card">
+      <div class="a-card-title">🎼 Genre-Empfehlung ${d.genre_confidence?`(${d.genre_confidence}%)`:''}</div>
+      <div class="a-card-value">${d.genre_primary||'—'}${d.genre_secondary?` · alt: ${d.genre_secondary}`:''}${d.genre_hybrid?`<br><span style="color:var(--neon);">Hybrid: ${d.genre_hybrid}</span>`:''}</div>
+    </div>
+    <div class="a-card">
+      <div class="a-card-title">🥁 BPM-Empfehlung</div>
+      <div class="a-card-value">${d.bpm_target?`<strong>${d.bpm_target} BPM</strong>`:'—'}${d.bpm_min&&d.bpm_max?` (${d.bpm_min}–${d.bpm_max})`:''}</div>
+      ${d.bpm_reasoning?`<div class="a-card-value" style="font-size:9px;color:var(--muted);margin-top:4px;">${d.bpm_reasoning}</div>`:''}
+    </div>
+    <div class="a-card">
+      <div class="a-card-title">🎹 Key-Empfehlung</div>
+      <div class="a-card-value">${d.key_suggestion||'—'}</div>
+    </div>
+    <div class="a-card">
+      <div class="a-card-title">🎸 Instrument-Empfehlungen</div>
+      <div class="a-card-value" style="font-size:10px;">${(d.instrument_suggestions||[]).join(', ')||'—'}</div>
+    </div>
+    <div class="a-card">
+      <div class="a-card-title">🌊 Flow-Analyse</div>
+      <div class="a-card-value" style="font-size:10px;">${d.flow_analysis||'—'}</div>
+    </div>
+    <div class="a-card">
+      <div class="a-card-title">🪝 Hook-Zeile</div>
+      <div class="a-card-value" style="font-size:10px;font-style:italic;">${d.hook_line?`„${d.hook_line}“`:'—'}</div>
+    </div>
+    <div class="a-card">
+      <div class="a-card-title">🎯 Emotionaler Höhepunkt</div>
+      <div class="a-card-value">${d.climax_section||'—'}</div>
+    </div>
+    <div class="a-card">
+      <div class="a-card-title">🗣️ Ad-lib-Spots</div>
+      <div class="a-card-value" style="font-size:10px;">${(d.adlib_spots||[]).map(s=>`(…) ${s}`).join('<br>')||'—'}</div>
+    </div>
+    <div class="a-card">
+      <div class="a-card-title">❗ Nachdruck-Zeilen</div>
+      <div class="a-card-value" style="font-size:10px;">${(d.emphasis_lines||[]).join('<br>')||'—'}</div>
+    </div>
+    <div class="a-card">
       <div class="a-card-title">📊 Struktur-Qualität</div>
       <div class="a-card-value" style="color:${qColor};font-weight:700;">${q}/100</div>
       <div class="quality-bar"><div class="quality-fill" style="width:${q}%;background:${qColor};"></div></div>
@@ -1546,6 +1657,11 @@ function renderAnalysis(d) {
       <div class="a-card-title">💡 Optimierungsempfehlungen</div>
       ${d.suggestions.map(s=>`<div class="suggestion-item">→ ${s}</div>`).join('')}
     </div>` : ''}
+    <div class="a-card a-suggestions">
+      <div class="a-card-title">⤵ Blueprint-Abgleich</div>
+      <button type="button" class="btn-secondary" id="btnApplyAnalysis" onclick="applyAnalysisSuggestions()">⤵ Analyse-Empfehlungen ins Blueprint übernehmen (BPM · Key · Genre · Instrumente · Moods)</button>
+      <div class="hint-text">Übernimmt die KI-Empfehlungen in die Eingabefelder — danach „Protokoll starten" für ein noch präziseres Ergebnis.</div>
+    </div>
   `;
   document.getElementById('cardAnalysis').style.display = 'block';
   const prov = currentProvider;
@@ -1578,6 +1694,38 @@ function renderLyrics(text) {
     .replace(/(\([^)]+\))/g,                 '<span style="color:#9ca3af;font-style:italic;">$1</span>');
   el.innerHTML = h;
   document.getElementById('btnCopyLyrics').onclick = () => copyToClipboard(text,'btnCopyLyrics');
+}
+
+// ════════════════════════════════════════════
+// ANALYSE → BLUEPRINT ÜBERNAHME
+// ════════════════════════════════════════════
+function applyAnalysisSuggestions() {
+  const d = lastAnalysis;
+  if (!d) return;
+  if (d.bpm_target) setBpm(Math.min(220, Math.max(40, parseInt(d.bpm_target, 10) || 90)));
+  if (d.key_suggestion) {
+    const sel = document.getElementById('metaKey');
+    if ([...sel.options].some(o => o.value === d.key_suggestion)) sel.value = d.key_suggestion;
+  }
+  // Genre nur übernehmen, wenn es exakt in der Auswahlliste existiert —
+  // bewusst ohne applyGenreDefaults(), damit die Analyse-BPM nicht überschrieben wird
+  if (d.genre_primary) {
+    const sel = document.getElementById('metaGenre');
+    const match = [...sel.options].find(o => o.value.toLowerCase() === String(d.genre_primary).toLowerCase());
+    if (match) sel.value = match.value;
+  }
+  if (Array.isArray(d.instrument_suggestions)) addChips(['instChipsDrums','instChipsKeys','instChipsBass','instChipsOrch','instChipsFX'], d.instrument_suggestions);
+  if (Array.isArray(d.detected_mood))         addChips(['moodChipsPrimary','moodChipsAtmo','moodChipsEnergy'], d.detected_mood);
+  if (d.vocal_suggestion && !document.getElementById('metaVocal').value) {
+    // Freitext-Empfehlung passt nicht 1:1 ins Select — als Hinweis im Mood-Custom-Feld ablegen
+    const mc = document.getElementById('metaMoodCustom');
+    if (!mc.value.includes('Vocal:')) mc.value = (mc.value ? mc.value + ', ' : '') + 'Vocal: ' + d.vocal_suggestion;
+  }
+  const btn = document.getElementById('btnApplyAnalysis');
+  if (btn) { btn.textContent = '✓ Übernommen — Blueprint aktualisiert'; btn.disabled = true; }
+  document.getElementById('blueprintBody').classList.add('open');
+  document.getElementById('blueprintArrow').classList.add('open');
+  document.getElementById('section-input').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 // ════════════════════════════════════════════
@@ -1666,6 +1814,7 @@ function resetAll() {
   document.getElementById('section-results').style.display='none';
   document.getElementById('rawText').value='';
   document.getElementById('metaMoodCustom').value='';
+  lastAnalysis = null;
   updateCharCounter(); setStep(1);
   window.scrollTo({top:0,behavior:'smooth'});
 }
@@ -1706,6 +1855,7 @@ async function runProtokoll() {
       // Fallback-Bereinigung nur noch für Claude relevant (kein nativer JSON-Modus)
       const clean = raw.replace(/```json|```/g,'').replace(/^[^{]*/,'').replace(/[^}]*$/,'').trim();
       analysisData = JSON.parse(clean);
+      lastAnalysis = analysisData;
       renderAnalysis(analysisData);
     } catch(e) {
       console.warn('Analyse fehlgeschlagen:', e);
