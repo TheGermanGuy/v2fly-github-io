@@ -826,8 +826,8 @@ def save_cf_hosts(hosts: set):
 # Position [0] = semantische Theme-Rolle (zur Laufzeit aufgeloest,
 # da class C/THEME erst weiter unten definiert werden).
 _STATUS_INFO = {
-    200: ("SUCCESS", "●", "OK",           ""),
-    206: ("SUCCESS", "●", "Partial OK",   ""),
+    200: ("SUCCESS", "■", "OK",           ""),
+    206: ("SUCCESS", "■", "Partial OK",   ""),
     301: ("WARN",    "→", "Redirect",     "URL prüfen"),
     302: ("WARN",    "→", "Redirect",     "URL prüfen"),
     401: ("DANGER",  "✕", "Unauthorized", "Account ungültig"),
@@ -1764,7 +1764,7 @@ _UTF8 = (sys.stdout.encoding or "").lower().startswith("utf")
 if _UTF8:
     BX = {"tl": "╭", "tr": "╮", "bl": "╰", "br": "╯",
           "h": "─", "v": "│", "ml": "├", "mr": "┤", "sep": "·",
-          "ok": "●", "warn": "▲", "err": "✕", "time": "⧗",
+          "ok": "■", "warn": "▲", "err": "✕", "time": "⧗",
           "rate": "◓", "special": "◆", "arrow": "▸"}
 else:
     BX = {"tl": "+", "tr": "+", "bl": "+", "br": "+",
@@ -1990,7 +1990,7 @@ def _format_hit_oneline(res: dict, active_workers: int = 0, max_workers: int = 1
 
     # ── Status-Icon: 1 sichtbares Zeichen ────────────────────
     _ICONS = {
-        200: (C.GREEN,  "●"), 206: (C.GREEN,  "●"),
+        200: (C.GREEN,  "■"), 206: (C.GREEN,  "■"),
         403: (C.RED,    "✕"), 401: (C.RED,    "✕"),
         404: (C.RED,    "✕"), 429: (C.YELLOW, "◓"),
         451: (C.RED,    "✕"),
@@ -3188,7 +3188,7 @@ def _submenu(title: str, groups: list, header: str = None,
     return _prompt("Auswahl", valid, back_key)
 
 def _ok_row(label: str, value: str, ok: bool = True) -> str:
-    icon = "●" if ok else "○"
+    icon = "■" if ok else "○"
     col  = C.GREEN if ok else C.DIM
     max_len = W_ACTUAL - 10
     label_width = min(20, max(max_len // 2, 12))
