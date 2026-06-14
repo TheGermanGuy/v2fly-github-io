@@ -137,7 +137,7 @@ def _render_theme(name: str, T: dict):
     print(frame_top())
     title = "  XTREAM · DE SCANNER"
     print(boxrow(title, paint(T["PRIMARY"], title, bold=True)))
-    sub = "  v28 · Pydroid Edition · 2026"
+    sub = "  v30.1 · Pydroid Edition · 2026"
     print(boxrow(sub, paint(T["MUTED"], sub)))
     print(frame_mid())
 

@@ -1816,7 +1816,7 @@ def _fmt_conns(active: int, max_c: int) -> str:
 
 def print_config_banner(total: int, loaded: int, cf_preloaded: int,
                         workers_actual: int, workers_auto: bool = False):
-    print(_hdr("XTREAM DE SCANNER v28.0"))
+    print(_hdr("XTREAM DE SCANNER v30.1"))
     rows = [
         ("Links gefunden",    str(total)),
         ("Bekannte übersprungen",  str(loaded)),
@@ -3207,7 +3207,7 @@ def _show_welcome(env: EnvInfo):
     print(bdr + c(C.WHITE + C.BOLD,
                   "  XTREAM DE SCANNER".center(iw)) + bdr)
     print(bdr + c(C.DIM,
-                  "v28  ·  Pydroid Edition  ·  2026".center(iw)) + bdr)
+                  "v30.1  ·  Pydroid Edition  ·  2026".center(iw)) + bdr)
     print(c(C.CYAN + C.BOLD, BX["ml"] + BX["h"] * iw + BX["mr"]))
 
     # ── Datei-Aufschlüsselung: DEAKTIVIERT (v28.1) ───────────────
