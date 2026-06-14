@@ -3190,7 +3190,10 @@ def _submenu(title: str, groups: list, header: str = None,
 def _ok_row(label: str, value: str, ok: bool = True) -> str:
     icon = c(C.GREEN, "●") if ok else c(C.DIM, "○")
     col  = C.WHITE if ok else C.DIM
-    return f"  {icon}  {c(C.GRAY, f'{label:<22}')}{c(col, value)}"
+    max_len = W_ACTUAL - 10
+    label_width = min(20, max(max_len // 2, 12))
+    value_str = str(value)[:max(max_len - label_width, 10)]
+    return f"{icon}  {c(C.GRAY, f'{label:<{label_width}}')}{c(col, value_str)}"
 
 
 # ==============================================================
