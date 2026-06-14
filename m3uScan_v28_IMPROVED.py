@@ -61,8 +61,8 @@ Erfordert: pip install aiohttp tqdm   |   Python 3.7+  (empf. 3.10+)
  CLOUDFLARE-HANDLING
 ════════════════════════════════════════════════════════
   CF_MAX_RETRIES = 0  (Pydroid3 löst keine JS-Challenges)
-  HeaderManager2026: Chrome 136 Win/macOS/Linux + Chrome 147 Win
-                     Firefox 138 Windows + Safari 18.0 macOS
+  HeaderManager2026: Chrome 146/148/149 Win/macOS/Linux
+                     Firefox 151 Windows + Safari 26 macOS
   Profilrotation: Chrome 25/25/25/25%, gesamt 70% Chrome /
                   20% Firefox / 10% Safari pro Request.
   SSL-Cipher: ECDHE-ECDSA → CHACHA20 → ECDHE-RSA → RSA-Fallback
@@ -366,84 +366,90 @@ PLAYER_USER_AGENTS = [
 class HeaderManager2026:
     """
     2026-konforme Browser-Header für CF-Bypass.
-    Chrome 136/147, Firefox 138, Safari 18.0.
+    Chrome 146/148/149, Firefox 151, Safari 26.
     Drei Methoden: get_chrome_headers(), get_firefox_headers(),
     get_safari_headers(). Rotation via get_best_profile().
+
+    Hinweis: Diese Header beeinflussen nur die HTTP-Layer-Erkennung.
+    Cloudflare-Enterprise mit JA4-TLS-Fingerprinting erkennt aiohttp
+    unabhängig von den Headern – dort hilft nur curl_cffi/Browser
+    (auf Pydroid 3 nicht verfügbar). Aktuelle UA-Versionen vermeiden
+    aber das einfachste Bot-Signal (veraltete Browser-Version).
     """
 
-    # ── Chrome 2026 – Drei Plattform-Profile ───────────────────
+    # ── Chrome 2026 – Plattform-Profile (Versions-Spread 146–149) ──
     CHROME_PROFILES = [
         {
             "_name":                       "Chrome/Win64",
             "User-Agent":                  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                                            "AppleWebKit/537.36 (KHTML, like Gecko) "
-                                           "Chrome/136.0.0.0 Safari/537.36",
-            "sec-ch-ua":                   '"Chromium";v="136", "Google Chrome";v="136", '
-                                           '"Not.A/Brand";v="99"',
+                                           "Chrome/149.0.0.0 Safari/537.36",
+            "sec-ch-ua":                   '"Google Chrome";v="149", "Chromium";v="149", '
+                                           '"Not.A/Brand";v="24"',
             "sec-ch-ua-mobile":            "?0",
             "sec-ch-ua-platform":          '"Windows"',
-            "sec-ch-ua-full-version-list": '"Chromium";v="136.0.7103.114", '
-                                           '"Google Chrome";v="136.0.7103.114", '
-                                           '"Not.A/Brand";v="99.0.0.0"',
+            "sec-ch-ua-full-version-list": '"Google Chrome";v="149.0.7632.78", '
+                                           '"Chromium";v="149.0.7632.78", '
+                                           '"Not.A/Brand";v="24.0.0.0"',
             "sec-ch-ua-arch":              '"x86"',
             "sec-ch-ua-bitness":           '"64"',
-            "sec-ch-ua-platform-version":  '"10.0.0"',
+            "sec-ch-ua-platform-version":  '"15.0.0"',
         },
         {
             "_name":                       "Chrome/macOS-ARM",
             "User-Agent":                  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
                                            "AppleWebKit/537.36 (KHTML, like Gecko) "
-                                           "Chrome/136.0.0.0 Safari/537.36",
-            "sec-ch-ua":                   '"Chromium";v="136", "Google Chrome";v="136", '
-                                           '"Not.A/Brand";v="99"',
+                                           "Chrome/148.0.0.0 Safari/537.36",
+            "sec-ch-ua":                   '"Google Chrome";v="148", "Chromium";v="148", '
+                                           '"Not.A/Brand";v="24"',
             "sec-ch-ua-mobile":            "?0",
             "sec-ch-ua-platform":          '"macOS"',
-            "sec-ch-ua-full-version-list": '"Chromium";v="136.0.7103.114", '
-                                           '"Google Chrome";v="136.0.7103.114", '
-                                           '"Not.A/Brand";v="99.0.0.0"',
+            "sec-ch-ua-full-version-list": '"Google Chrome";v="148.0.7589.110", '
+                                           '"Chromium";v="148.0.7589.110", '
+                                           '"Not.A/Brand";v="24.0.0.0"',
             "sec-ch-ua-arch":              '"arm"',
             "sec-ch-ua-bitness":           '"64"',
-            "sec-ch-ua-platform-version":  '"14.5.0"',
+            "sec-ch-ua-platform-version":  '"15.5.0"',
         },
         {
             "_name":                       "Chrome/Linux-x64",
             "User-Agent":                  "Mozilla/5.0 (X11; Linux x86_64) "
                                            "AppleWebKit/537.36 (KHTML, like Gecko) "
-                                           "Chrome/136.0.0.0 Safari/537.36",
-            "sec-ch-ua":                   '"Chromium";v="136", "Google Chrome";v="136", '
-                                           '"Not.A/Brand";v="99"',
+                                           "Chrome/146.0.0.0 Safari/537.36",
+            "sec-ch-ua":                   '"Google Chrome";v="146", "Chromium";v="146", '
+                                           '"Not.A/Brand";v="24"',
             "sec-ch-ua-mobile":            "?0",
             "sec-ch-ua-platform":          '"Linux"',
-            "sec-ch-ua-full-version-list": '"Chromium";v="136.0.7103.114", '
-                                           '"Google Chrome";v="136.0.7103.114", '
-                                           '"Not.A/Brand";v="99.0.0.0"',
+            "sec-ch-ua-full-version-list": '"Google Chrome";v="146.0.7456.134", '
+                                           '"Chromium";v="146.0.7456.134", '
+                                           '"Not.A/Brand";v="24.0.0.0"',
             "sec-ch-ua-arch":              '"x86"',
             "sec-ch-ua-bitness":           '"64"',
-            "sec-ch-ua-platform-version":  '"6.8.0"',
+            "sec-ch-ua-platform-version":  '"6.11.0"',
         },
         {
-            "_name":                       "Chrome147/Win64",
+            "_name":                       "Chrome149/Win64",
             "User-Agent":                  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                                            "AppleWebKit/537.36 (KHTML, like Gecko) "
-                                           "Chrome/147.0.0.0 Safari/537.36",
-            "sec-ch-ua":                   '"Chromium";v="147", "Google Chrome";v="147", '
-                                           '"Not.A/Brand";v="99"',
+                                           "Chrome/149.0.0.0 Safari/537.36",
+            "sec-ch-ua":                   '"Google Chrome";v="149", "Chromium";v="149", '
+                                           '"Not.A/Brand";v="24"',
             "sec-ch-ua-mobile":            "?0",
             "sec-ch-ua-platform":          '"Windows"',
-            "sec-ch-ua-full-version-list": '"Chromium";v="147.0.0.0", '
-                                           '"Google Chrome";v="147.0.0.0", '
-                                           '"Not.A/Brand";v="99.0.0.0"',
+            "sec-ch-ua-full-version-list": '"Google Chrome";v="149.0.7632.78", '
+                                           '"Chromium";v="149.0.7632.78", '
+                                           '"Not.A/Brand";v="24.0.0.0"',
             "sec-ch-ua-arch":              '"x86"',
             "sec-ch-ua-bitness":           '"64"',
-            "sec-ch-ua-platform-version":  '"10.0.0"',
+            "sec-ch-ua-platform-version":  '"15.0.0"',
         },
     ]
 
-    # ── Firefox 138 (2026 aktuell) ─────────────────────────────
+    # ── Firefox 151 (2026 aktuell) ─────────────────────────────
     FIREFOX_HEADERS = {
-        "_name":             "Firefox138/Win",
-        "User-Agent":        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:138.0) "
-                             "Gecko/20100101 Firefox/138.0",
+        "_name":             "Firefox151/Win",
+        "User-Agent":        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:151.0) "
+                             "Gecko/20100101 Firefox/151.0",
         "Accept":            "text/html,application/xhtml+xml,application/xml;"
                              "q=0.9,image/avif,image/webp,*/*;q=0.8",
         "Accept-Language":   "de-DE,de;q=0.9,en-US;q=0.8,en;q=0.5",
@@ -459,12 +465,12 @@ class HeaderManager2026:
         "TE":                "trailers",
     }
 
-    # ── Safari 18.0 / macOS Sequoia (2026) ────────────────────
+    # ── Safari 26 / macOS Tahoe (2026) ────────────────────────
     SAFARI_HEADERS = {
-        "_name":             "Safari18/macOS",
+        "_name":             "Safari26/macOS",
         "User-Agent":        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
                              "AppleWebKit/605.1.15 (KHTML, like Gecko) "
-                             "Version/18.0 Safari/605.1.15",
+                             "Version/26.0 Safari/605.1.15",
         "Accept":            "text/html,application/xhtml+xml,application/xml;"
                              "q=0.9,*/*;q=0.8",
         "Accept-Language":   "de-DE,de;q=0.9,en-US;q=0.8",
@@ -536,7 +542,7 @@ class HeaderManager2026:
 
     @classmethod
     def get_firefox_headers(cls) -> dict:
-        """Firefox 138 Navigation-Header."""
+        """Firefox 151 Navigation-Header."""
         h = dict(cls.FIREFOX_HEADERS)
         h["Accept-Language"] = _rand_accept_lang()
         h.pop("_name", None)
@@ -544,7 +550,7 @@ class HeaderManager2026:
 
     @classmethod
     def get_safari_headers(cls) -> dict:
-        """Safari 18 Navigation-Header."""
+        """Safari 26 Navigation-Header."""
         h = dict(cls.SAFARI_HEADERS)
         h["Accept-Language"] = _rand_accept_lang()
         h.pop("_name", None)
@@ -553,7 +559,7 @@ class HeaderManager2026:
     @classmethod
     def get_best_chrome_profile(cls) -> dict:
         """Wählt zufällig ein Chrome-Profil."""
-        weights = [25, 25, 25, 25]      # Win136, Mac136, Lin136, Win147 – gleich
+        weights = [25, 25, 25, 25]      # Win149, Mac148, Lin146, Win149 – gleich
         return random.choices(cls.CHROME_PROFILES, weights=weights, k=1)[0]
 
     @classmethod
@@ -4362,9 +4368,12 @@ async def _async_main():
     ssl_ctx   = _build_ssl_context()
     connector = aiohttp.TCPConnector(
         limit=cfg.workers,
-        limit_per_host=3,
+        limit_per_host=3,        # niedrig: schont Panel-nginx-Rate-Limit / Fail2ban
         ssl=False,
-        enable_cleanup_closed=True,
+        enable_cleanup_closed=True,  # No-Op auf Python 3.12.7+/3.13, schadet aber nicht
+        ttl_dns_cache=300,       # Default 10s → 300s: weniger DNS-Lookups bei vielen
+                                 # Links pro Host (ThreadedResolver; aiodns läuft nicht auf Pydroid)
+        use_dns_cache=True,
     )
 
     _precheck_cache.clear()
@@ -4938,7 +4947,7 @@ class LinkStatusChecker:
             async with aiohttp.ClientSession() as session:
                 async with session.get(
                     api_url,
-                    headers={"User-Agent": "Mozilla/5.0 (Android; Linux) Chrome/136"},
+                    headers={"User-Agent": "Mozilla/5.0 (Android; Linux) Chrome/149"},
                     timeout=aiohttp.ClientTimeout(total=5),
                     ssl=False
                 ) as resp:
@@ -4998,7 +5007,7 @@ class LinkStatusChecker:
                 ctx.verify_mode = ssl.CERT_NONE
 
                 req = urllib.request.Request(api_url, headers={
-                    'User-Agent': 'Mozilla/5.0 (Android; Linux) Chrome/136'
+                    'User-Agent': 'Mozilla/5.0 (Android; Linux) Chrome/149'
                 })
                 with urllib.request.urlopen(req, context=ctx, timeout=5) as resp:
                     data = json.loads(resp.read().decode('utf-8'))
