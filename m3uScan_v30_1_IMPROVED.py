@@ -1819,7 +1819,6 @@ def print_config_banner(total: int, loaded: int, cf_preloaded: int,
     print(_hdr("XTREAM DE SCANNER v30.1"))
     rows = [
         ("Links gefunden",    str(total)),
-        ("Gecacht",            str(loaded)),
         ("CF-Hosts geladen",  str(cf_preloaded)),
         ("Workers",            f"{workers_actual}" + (" (auto)" if workers_auto else " (manuell)")),
         ("Timeout",           f"{TIMEOUT}s / Task-Max {TIMEOUT * TASK_TIMEOUT_MULT}s"),
@@ -3512,8 +3511,6 @@ def _confirm_screen(cfg: ScanConfig, total: int,
 
     rows = [
         ("Links gefunden",    str(total),           C.WHITE),
-        ("Gecacht",            str(env.known_links),
-         C.GREEN if env.known_links > 0 else C.DIM),
         ("Cloudflare-Hosts",  str(env.cf_hosts),
          C.YELLOW if env.cf_hosts > 0 else C.DIM),
         ("Workers",
