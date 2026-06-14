@@ -341,9 +341,9 @@ class SettingsScreen(Screen):
         layout = BoxLayout(orientation="vertical", padding=dp(16), spacing=dp(10))
 
         # Dark Mode Toggle
-        dark_mode_layout = BoxLayout(size_hint_y=0.1)
+        dark_mode_layout = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(10))
         dark_mode_layout.add_widget(Label(text="🌙 Dark Mode", size_hint_x=0.7))
-        dark_mode_switch = Switch(active=True, size_hint_x=0.3)
+        dark_mode_switch = Switch(active=True, size_hint_x=0.3, size_hint_y=1)
         dark_mode_switch.bind(active=self.on_dark_mode_toggle)
         dark_mode_layout.add_widget(dark_mode_switch)
         layout.add_widget(dark_mode_layout)
