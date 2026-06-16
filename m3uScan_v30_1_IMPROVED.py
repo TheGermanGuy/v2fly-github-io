@@ -2054,9 +2054,10 @@ def _format_hit(res: dict) -> str:
 # STATE MANAGEMENT
 # ==============================================================
 class ScanState:
-    def __init__(self):
+    def __init__(self, recheck_mode: bool = False):
         self.lock              = asyncio.Lock()
         self.checked_keys      = set()
+        self.recheck_mode      = recheck_mode  # Re-Check: Duplikat-Check überspringen
         self._cf_hosts         = load_cf_hosts()
         self._cf_cookies       = {}   # host → {"value": str, "expires": float}
         self._cf_profile       = {}   # host → Browser-Profil-Index
@@ -2105,7 +2106,7 @@ class ScanState:
     def load_existing(self) -> int:
         """
         Lädt bereits bekannte Accounts aus den Ausgabedateien.
-       
+
         Verhindert Re-Scan identischer Credentials auf anderen Hosts.
         """
         count = 0
@@ -2121,6 +2122,23 @@ class ScanState:
                         self.checked_keys.add((u, pw))   #
                         count += 1
         return count
+
+    def load_for_recheck(self) -> list:
+        """
+        Lädt Links aus bestehenden Output-Dateien zum Re-Check.
+        Ignoriert checked_keys — alle Links werden neu geprüft.
+        Rückgabe: Liste von URLs (wie input_urls).
+        """
+        urls = []
+        for fname in [OUTPUT_FILE, TVONLY_FILE, VPN_FILE, CF_FILE, EXPIRING_FILE]:
+            if not os.path.exists(fname):
+                continue
+            with open(fname, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        urls.append(line)
+        return urls
 
     def get_cf_cookie_header(self, host: str) -> str:
         entry = self._cf_cookies.get(host)
@@ -2833,11 +2851,16 @@ async def worker(session, state: ScanState, url: str, ssl_ctx):
     # Pre-Flight-Checks + Jitter-Berechnung in einem Lock (keine Awaits dazwischen)
     key = (u, pw)
     async with state.lock:
-        # Duplikat-Check
-        if key in state.checked_keys:
-            state.stats["duplikate"] += 1
-            return None
-        state.checked_keys.add(key)
+        # Duplikat-Check (im Recheck-Modus übersprungen)
+        if not state.recheck_mode:
+            if key in state.checked_keys:
+                state.stats["duplikate"] += 1
+                return None
+            state.checked_keys.add(key)
+        else:
+            # Recheck: trotzdem zur checked_keys hinzufügen um
+            # mehrfache Scans in dieser Session zu vermeiden
+            state.checked_keys.add(key)
 
         # Host-Fehler-Limit
         if state.host_error_count.get(host, 0) >= MAX_ERRORS_PER_HOST:
@@ -2996,6 +3019,7 @@ class ScanConfig:
         self.cf_blacklist   = False          # CF-Blacklist aktivieren
         self.resume         = False          # Resume-Modus aktiv
         self.resume_processed = 0            # Bereits verarbeitete Links
+        self.recheck_mode   = False          # Re-Check bereits gültiger Links
 
     def apply_preset_quick(self):
         """SCHNELL – Maximale Geschwindigkeit, minimale Filter."""
@@ -3309,6 +3333,10 @@ def _main_menu(env: EnvInfo) -> str:
 
     print(_menu_divider())
 
+    # ── Re-Check Mode ─────────────────────────────────────────
+    recheck_col = C.CYAN if lk_ok else C.GRAY
+    print(_menu_row("X","Re-Check", "Bereits gespeicherte Links erneut prüfen",   recheck_col))
+
     # ── Werkzeuge: kompakt nebeneinander ──────────────────────
     def _t(key, name, col):
         return f"{c(col,f'[{key}]')} {c(col,f'{name:<9}')}"
@@ -3328,7 +3356,7 @@ def _main_menu(env: EnvInfo) -> str:
 
     print(f"  {_t('H','Hilfe',C.GRAY)}  {_t('Q','Beenden',C.GRAY)}")
 
-    valid = ["A","1","2","3","4","5","D","S","E","V","H","Q"]
+    valid = ["A","1","2","3","4","5","D","S","E","V","H","Q","X"]
     if env.has_checkpoint:
         valid.append("R")
     return _prompt("Auswahl", valid, "A")
@@ -4135,6 +4163,34 @@ def run_menu() -> ScanConfig:
             env = EnvInfo().detect()
             continue
 
+        if choice == "X":
+            # Re-Check Mode: Links aus Output-Dateien laden
+            temp_state = ScanState()
+            recheck_urls = temp_state.load_for_recheck()
+            if not recheck_urls:
+                print(c(C.RED, "\n  ✕ Keine Links zum Re-Check gefunden."))
+                input(c(C.DIM, "  [ENTER] Zurück..."))
+                continue
+            cfg.recheck_mode = True
+            cfg.input_urls = recheck_urls
+            cfg.mode_name = "Re-Check"
+            print(c(C.GREEN, f"\n  ● {len(recheck_urls)} Links geladen zum Re-Check."))
+            cfg.apply_preset_normal()  # Standard-Einstellungen für Re-Check
+            total = len(cfg.input_urls)
+            unique_hosts = len({urlparse(u).netloc for u in cfg.input_urls})
+            if cfg.workers_auto:
+                worker_info = _determine_optimal_workers(unique_hosts, total)
+                workers_actual = worker_info['workers']
+            else:
+                workers_actual = cfg.workers
+            if not _confirm_screen(cfg, total, workers_actual, env):
+                ans = _prompt("Neues Setup?", ["J", "N"], "J")
+                if ans == "N":
+                    return None
+                continue
+            cfg.workers = workers_actual
+            return cfg
+
         # Preset anwenden
         if choice == "A":
             _auto_configure(env, cfg)
@@ -4317,8 +4373,21 @@ async def _async_main():
     _init_file_locks()
 
     # ── State ─────────────────────────────────────────────────
-    state        = ScanState()
-    loaded       = state.load_existing()
+    state        = ScanState(recheck_mode=cfg.recheck_mode)
+
+    # Recheck-Modus: Links aus Output-Dateien laden
+    if cfg.recheck_mode:
+        recheck_urls = state.load_for_recheck()
+        if recheck_urls:
+            cfg.input_urls = recheck_urls
+            cfg.mode_name  = "Re-Check"
+        else:
+            print(c(C.DIM, "  Keine Links zum Re-Check gefunden."))
+            return
+        loaded = 0  # Im Recheck-Modus nicht laden
+    else:
+        loaded = state.load_existing()
+
     cf_preloaded = len(state._cf_hosts)
 
     # ── Resume-Modus: Bereits verarbeitete Links überspringen ─
