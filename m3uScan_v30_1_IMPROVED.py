@@ -1526,16 +1526,21 @@ def _get_de_confidence(is_de: bool, tier: int, score: int) -> int:
     return 0
 
 
+def _names_from_list(items: list, key: str = "category_name") -> str:
+    """Join der key-Werte aus einer bereits geparsten Liste."""
+    return " | ".join(
+        str(item.get(key, ""))
+        for item in items
+        if isinstance(item, dict)
+    )
+
+
 def _extract_names(raw: str, key: str = "category_name") -> str:
     """Parst JSON-Array und gibt key-Werte als String zurück."""
     try:
         items = json.loads(raw)
         if isinstance(items, list):
-            return " | ".join(
-                str(item.get(key, ""))
-                for item in items
-                if isinstance(item, dict)
-            )
+            return _names_from_list(items, key)
     except (json.JSONDecodeError, AttributeError):
         pass
     return raw
@@ -1816,7 +1821,7 @@ def _fmt_conns(active: int, max_c: int) -> str:
 
 def print_config_banner(total: int, loaded: int, cf_preloaded: int,
                         workers_actual: int, workers_auto: bool = False):
-    print(_hdr("XTREAM DE SCANNER v30.1"))
+    print(_hdr("XTREAM SCANNER v33.0 | Author > TheGermanGuy™"))
     rows = [
         ("Links gefunden",    str(total)),
         ("CF-Hosts geladen",  str(cf_preloaded)),
@@ -2212,11 +2217,20 @@ def detect_panel_type(server_info: dict) -> str:
 def save_checkpoint(state: "ScanState", processed: int, input_urls: list = None):
     """Speichert aktuellen Scan-Fortschritt in CHECKPOINT_FILE."""
     try:
+        urls = input_urls if input_urls is not None else []
+        # input_urls ist während eines Scans konstant → Hash nur einmal je
+        # Listen-Objekt berechnen (spart O(n log n)-Sort + SHA256 pro Checkpoint).
+        cache = getattr(save_checkpoint, "_hash_cache", None)
+        if cache is not None and cache[0] is urls:
+            input_hash = cache[1]
+        else:
+            input_hash = hashlib.sha256("\n".join(sorted(urls)).encode()).hexdigest() if urls else ""
+            save_checkpoint._hash_cache = (urls, input_hash)
         data = {
             "ts":           datetime.now().isoformat(),
             "processed":    processed,
-            "input_urls":   input_urls if input_urls is not None else [],
-            "input_hash":   hashlib.sha256("\n".join(sorted(input_urls or [])).encode()).hexdigest() if input_urls else "",
+            "input_urls":   urls,
+            "input_hash":   input_hash,
             "free_links":   state.free_links,
             "tvonly_links": state.tvonly_links,
             "vpn_links":    state.vpn_links,
@@ -2413,16 +2427,18 @@ async def check_all_content(session, api: str, u: str, pw: str,
     if isinstance(raw_gen,    Exception): raw_gen    = ""
     if isinstance(raw_series, Exception): raw_series = ""
 
-    # Kategorienzahl
+    # Kategorienzahl + Live-Score (DE) — raw_live nur einmal parsen
     try:
-        live_items    = json.loads(raw_live) if raw_live else []
-        live_cat_count= len(live_items) if isinstance(live_items, list) else 999
+        live_items = json.loads(raw_live) if raw_live else []
     except Exception:
-        live_cat_count= 999
-        live_items    = []
+        live_items = None
+    if isinstance(live_items, list):
+        live_cat_count = len(live_items)
+        cat_names      = _names_from_list(live_items, "category_name")
+    else:
+        live_cat_count = 999
+        cat_names      = raw_live
 
-    # Live-Score (DE)
-    cat_names  = _extract_names(raw_live, "category_name")
     gen_names  = _extract_names(raw_gen,  "genre_name")
     live_is_de, live_tier, live_score = score_de_content(
         cat_names, vod_mode=False, tz_bonus=tz_bonus, cat_count=live_cat_count
@@ -2814,29 +2830,27 @@ async def worker(session, state: ScanState, url: str, ssl_ctx):
                 state.stats["tcp_fehler"]    += 1
             return None
 
-    # Duplikat-Check
+    # Pre-Flight-Checks + Jitter-Berechnung in einem Lock (keine Awaits dazwischen)
     key = (u, pw)
     async with state.lock:
+        # Duplikat-Check
         if key in state.checked_keys:
             state.stats["duplikate"] += 1
             return None
         state.checked_keys.add(key)
 
-    # Host-Fehler-Limit
-    async with state.lock:
+        # Host-Fehler-Limit
         if state.host_error_count.get(host, 0) >= MAX_ERRORS_PER_HOST:
             state.stats["host_geblockt"] += 1
             return None
 
-    #
-    if MAX_LINKS_PER_HOST > 0:
-        async with state.lock:
-            if state.host_links_count.get(host, 0) >= MAX_LINKS_PER_HOST:
-                state.stats["host_limit"] += 1
-                return None
+        # Host-Links-Limit
+        if MAX_LINKS_PER_HOST > 0 and \
+           state.host_links_count.get(host, 0) >= MAX_LINKS_PER_HOST:
+            state.stats["host_limit"] += 1
+            return None
 
-    # Jitter-Delay (adaptiv, get_running_loop statt get_event_loop)
-    async with state.lock:
+        # Jitter-Delay (adaptiv, get_running_loop statt get_event_loop)
         is_known_cf = host in state._cf_hosts
         mult        = state.host_jitter_mult.get(host, 1.0)
         jitter      = _jitter(is_known_cf, mult)
@@ -3208,9 +3222,9 @@ def _show_welcome(env: EnvInfo):
     line = c(C.CYAN + C.BOLD, BX["tl"] + BX["h"] * iw + BX["tr"])
     print(line)
     print(bdr + c(C.WHITE + C.BOLD,
-                  "  XTREAM DE SCANNER".center(iw)) + bdr)
+                  "XTREAM SCANNER  v33.0".center(iw)) + bdr)
     print(bdr + c(C.DIM,
-                  "v30.1  ·  Pydroid Edition  ·  2026".center(iw)) + bdr)
+                  "Author > TheGermanGuy™  ·  2026".center(iw)) + bdr)
     print(c(C.CYAN + C.BOLD, BX["ml"] + BX["h"] * iw + BX["mr"]))
 
     # ── Datei-Aufschlüsselung: DEAKTIVIERT (v28.1) ───────────────
