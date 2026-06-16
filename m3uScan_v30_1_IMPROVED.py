@@ -4164,17 +4164,44 @@ def run_menu() -> ScanConfig:
             continue
 
         if choice == "X":
-            # Re-Check Mode: Links aus Output-Dateien laden
-            temp_state = ScanState()
-            recheck_urls = temp_state.load_for_recheck()
-            if not recheck_urls:
-                print(c(C.RED, "\n  ✕ Keine Links zum Re-Check gefunden."))
-                input(c(C.DIM, "  [ENTER] Zurück..."))
-                continue
+            # Re-Check Mode: Auswahl zwischen Auto-Load oder Manuell
+            _cls()
+            _section("RE-CHECK MODE")
+            print(c(C.CYAN, "  Wie möchtest du Links für den Re-Check laden?"))
+            print()
+            print(_menu_row("A", "Auto",     "Alle Links aus Output-Dateien laden", C.GREEN))
+            print(_menu_row("M", "Manuell",  "Einzelne Links selbst eingeben",     C.WHITE))
+            print()
+            recheck_choice = _prompt("Auswahl", ["A", "M"], "A")
+
+            recheck_urls = []
+            if recheck_choice == "A":
+                # Auto: Links aus Output-Dateien
+                temp_state = ScanState()
+                recheck_urls = temp_state.load_for_recheck()
+                if not recheck_urls:
+                    print(c(C.RED, "\n  ✕ Keine Links zum Re-Check gefunden."))
+                    input(c(C.DIM, "  [ENTER] Zurück..."))
+                    continue
+                print(c(C.GREEN, f"\n  ● {len(recheck_urls)} Links aus Output-Dateien geladen."))
+            else:
+                # Manuell: normale Input-Menu verwenden
+                print(c(C.DIM, "\n  Gib die Links zum Re-Check ein (wie im normalen Modus):"))
+                lines = _input_menu()
+                if not lines or lines == [""]:
+                    print(c(C.RED, "\n  ✕ Keine Links eingegeben."))
+                    input(c(C.DIM, "  [ENTER] Zurück..."))
+                    continue
+                # Portal-Format prüfen (wie in normalem Modus)
+                if lines and lines[0] == "__PORTAL_URLS__":
+                    recheck_urls = lines[1:]
+                else:
+                    recheck_urls = lines
+                print(c(C.GREEN, f"\n  ● {len(recheck_urls)} Links eingegeben."))
+
             cfg.recheck_mode = True
             cfg.input_urls = recheck_urls
             cfg.mode_name = "Re-Check"
-            print(c(C.GREEN, f"\n  ● {len(recheck_urls)} Links geladen zum Re-Check."))
             cfg.apply_preset_normal()  # Standard-Einstellungen für Re-Check
             total = len(cfg.input_urls)
             unique_hosts = len({urlparse(u).netloc for u in cfg.input_urls})
