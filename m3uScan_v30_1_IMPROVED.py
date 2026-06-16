@@ -4407,15 +4407,17 @@ async def _async_main():
     # ── State ─────────────────────────────────────────────────
     state        = ScanState(recheck_mode=cfg.recheck_mode)
 
-    # Recheck-Modus: Links aus Output-Dateien laden
+    # Recheck-Modus: Links aus Output-Dateien laden (nur wenn noch nicht manuell eingegeben)
     if cfg.recheck_mode:
-        recheck_urls = state.load_for_recheck()
-        if recheck_urls:
-            cfg.input_urls = recheck_urls
-            cfg.mode_name  = "Re-Check"
-        else:
-            print(c(C.DIM, "  Keine Links zum Re-Check gefunden."))
-            return
+        # Wenn User bereits Links manuell im Menü eingegeben hat, nicht überschreiben
+        if not cfg.input_urls:
+            recheck_urls = state.load_for_recheck()
+            if recheck_urls:
+                cfg.input_urls = recheck_urls
+            else:
+                print(c(C.DIM, "  Keine Links zum Re-Check gefunden."))
+                return
+        cfg.mode_name  = "Re-Check"
         loaded = 0  # Im Recheck-Modus nicht laden
     else:
         loaded = state.load_existing()
