@@ -4203,6 +4203,7 @@ def run_menu() -> ScanConfig:
             cfg.input_urls = recheck_urls
             cfg.mode_name = "Re-Check"
             cfg.apply_preset_normal()  # Standard-Einstellungen für Re-Check
+            cfg.precheck = False  # Re-Check: immer ohne Pre-Check
             total = len(cfg.input_urls)
             unique_hosts = len({urlparse(u).netloc for u in cfg.input_urls})
             if cfg.workers_auto:
