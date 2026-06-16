@@ -4237,32 +4237,37 @@ def run_menu() -> ScanConfig:
         elif choice == "5":
             _manual_setup(cfg)
 
-        # Eingabe
-        lines = _input_menu()
-
-        # Portal-Format: _input_menu hat bereits URLs konvertiert
-        if lines and lines[0] == "__PORTAL_URLS__":
-            portal_urls = lines[1:]
-            cfg.input_urls = portal_urls
-        elif cfg.cf_debug:
-            cf_urls = []
-            if os.path.exists(CF_FILE):
-                with open(CF_FILE, "r", encoding="utf-8") as f:
-                    cf_urls = [l.strip() for l in f if l.strip()]
-            cfg.input_urls = cf_urls + _RE_XTREAM.findall("\n".join(lines))
+        # Im Re-Check-Modus: Links sind bereits gesetzt, keine neue Eingabe nötig
+        if cfg.recheck_mode and cfg.input_urls:
+            # Re-Check Links sind bereits valid, weiter zu Scan
+            pass
         else:
-            # Standard: Xtream-URLs per Regex extrahieren +
-            # Portal-Format als Fallback (für gemischten Input)
-            raw_text   = "\n".join(lines)
-            xtream_urls= _RE_XTREAM.findall(raw_text)
-            portal_conv= _process_portal_format(lines)
-            # Merge: Xtream zuerst, dann Portal-konvertierte (kein Duplikat)
-            seen = set(xtream_urls)
-            for u in portal_conv:
-                if u not in seen:
-                    xtream_urls.append(u)
-                    seen.add(u)
-            cfg.input_urls = xtream_urls
+            # Eingabe nur im normalen Modus
+            lines = _input_menu()
+
+            # Portal-Format: _input_menu hat bereits URLs konvertiert
+            if lines and lines[0] == "__PORTAL_URLS__":
+                portal_urls = lines[1:]
+                cfg.input_urls = portal_urls
+            elif cfg.cf_debug:
+                cf_urls = []
+                if os.path.exists(CF_FILE):
+                    with open(CF_FILE, "r", encoding="utf-8") as f:
+                        cf_urls = [l.strip() for l in f if l.strip()]
+                cfg.input_urls = cf_urls + _RE_XTREAM.findall("\n".join(lines))
+            else:
+                # Standard: Xtream-URLs per Regex extrahieren +
+                # Portal-Format als Fallback (für gemischten Input)
+                raw_text   = "\n".join(lines)
+                xtream_urls= _RE_XTREAM.findall(raw_text)
+                portal_conv= _process_portal_format(lines)
+                # Merge: Xtream zuerst, dann Portal-konvertierte (kein Duplikat)
+                seen = set(xtream_urls)
+                for u in portal_conv:
+                    if u not in seen:
+                        xtream_urls.append(u)
+                        seen.add(u)
+                cfg.input_urls = xtream_urls
 
         if not cfg.input_urls:
             print(c(C.RED, "\n  [-] Keine gültigen Xtream-Links gefunden!"))
