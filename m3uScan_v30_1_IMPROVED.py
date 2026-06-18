@@ -806,7 +806,7 @@ def load_cf_hosts() -> set:
         return set()
 
 def save_cf_hosts(hosts: set):
-    """Speichert CF-Hosts mit aktuellem Timestamp in cf_hosts.json."""
+    """Speichert CF-Hosts mit aktuellem Timestamp in cf_hosts.json (sicher)."""
     try:
         existing = {}
         if os.path.exists(CF_HOSTS_FILE):
@@ -814,8 +814,8 @@ def save_cf_hosts(hosts: set):
                 existing = json.load(f)
         now = time.time()
         existing.update({h: now for h in hosts})
-        with open(CF_HOSTS_FILE, "w", encoding="utf-8") as f:
-            json.dump(existing, f, indent=2)
+        content = json.dumps(existing, indent=2)
+        _safe_write(CF_HOSTS_FILE, content, append=False)
     except Exception:
         pass
 
@@ -2271,8 +2271,8 @@ def save_checkpoint(state: "ScanState", processed: int, input_urls: list = None)
             "cf_links":     state.cf_links,
             "stats":        dict(state.stats),
         }
-        with open(CHECKPOINT_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
+        content = json.dumps(data, indent=2)
+        _safe_write(CHECKPOINT_FILE, content, append=False)
     except Exception:
         pass
 
@@ -4334,8 +4334,52 @@ def run_menu() -> ScanConfig:
 
 
 # ==============================================================
-# DATEIEN SPEICHERN
+# SICHERE DATEIEN-OPERATIONEN (mit Datenverlust-Schutz)
 # ==============================================================
+def _safe_write(filepath: str, content: str, append: bool = False) -> bool:
+    """
+    Schreibt Dateiinhalt sicher mit Atomaren Writes.
+    Verhindert Datenverlust bei Abstürzen während des Schreibens.
+
+    Strategie:
+    1. Schreibe in temporäre Datei (.tmp)
+    2. Erstelle Backup der Original-Datei (.bak)
+    3. Benenne Temp-Datei zu Original um (atomar)
+
+    Im Append-Modus: direkt anhängen (sicherer als overwrite).
+    """
+    try:
+        if append:
+            # Append-Modus: direkt schreiben (sicherer)
+            with open(filepath, "a", encoding="utf-8") as f:
+                f.write(content)
+            return True
+        else:
+            # Write-Modus: mit Backup + Temp-File
+            temp_path = filepath + ".tmp"
+            backup_path = filepath + ".bak"
+
+            # Schreibe in Temp-Datei
+            with open(temp_path, "w", encoding="utf-8") as f:
+                f.write(content)
+
+            # Erstelle Backup der Original-Datei (falls sie existiert)
+            if os.path.exists(filepath):
+                try:
+                    import shutil
+                    shutil.copy2(filepath, backup_path)
+                except Exception:
+                    pass
+
+            # Benenne Temp-Datei zu Original um (atomar auf den meisten Systemen)
+            import shutil
+            shutil.move(temp_path, filepath)
+            return True
+    except Exception as e:
+        # Fehler-Fallback: Original-Datei ist unversehrt
+        return False
+
+
 def mark_invalid_links(input_urls: list, valid_urls: set, recheck_mode: bool = False) -> None:
     """
     Markiert ungültige Links als Kommentare in den Output-Dateien.
@@ -4375,13 +4419,12 @@ def mark_invalid_links(input_urls: list, valid_urls: set, recheck_mode: bool = F
         if not invalid_in_file:
             continue
 
-        # Schreibe ungültige Links als Kommentare ans Ende der Datei
-        try:
-            with open(fname, "a", encoding="utf-8") as f:
-                for url in sorted(invalid_in_file):
-                    f.write(f"# [RECHECK:INVALID:{timestamp}] {url}\n")
-        except Exception:
-            pass
+        # Schreibe ungültige Links als Kommentare ans Ende der Datei (sicher)
+        content = ""
+        for url in sorted(invalid_in_file):
+            content += f"# [RECHECK:INVALID:{timestamp}] {url}\n"
+        if content:
+            _safe_write(fname, content, append=True)
 
 
 def save_links(state: ScanState):
