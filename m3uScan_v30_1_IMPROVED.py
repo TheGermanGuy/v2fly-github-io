@@ -1821,7 +1821,7 @@ def _fmt_conns(active: int, max_c: int) -> str:
 
 def print_config_banner(total: int, loaded: int, cf_preloaded: int,
                         workers_actual: int, workers_auto: bool = False):
-    print(_hdr("XTREAM SCANNER v33.0 | Author > TheGermanGuy™"))
+    print(_hdr("XTREAM SCANNER v34.0 | Author > TheGermanGuy™"))
     rows = [
         ("Links gefunden",    str(total)),
         ("CF-Hosts geladen",  str(cf_preloaded)),
@@ -3262,7 +3262,7 @@ def _show_welcome(env: EnvInfo):
     line = c(C.CYAN + C.BOLD, BX["tl"] + BX["h"] * iw + BX["tr"])
     print(line)
     print(bdr + c(C.WHITE + C.BOLD,
-                  "XTREAM SCANNER  v33.0".center(iw)) + bdr)
+                  "XTREAM SCANNER  v34.0".center(iw)) + bdr)
     print(bdr + c(C.DIM,
                   "Author > TheGermanGuy™  ·  2026".center(iw)) + bdr)
     print(c(C.CYAN + C.BOLD, BX["ml"] + BX["h"] * iw + BX["mr"]))
