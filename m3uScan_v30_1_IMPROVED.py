@@ -1631,6 +1631,23 @@ _SAFE_FILENAME = re.compile(r'[^\w\-.]')
 _SAFE_FILENAME_USER = re.compile(r'[^\w\-]')
 
 
+def _extract_url_from_line(line: str) -> str:
+    """
+    Extrahiert URL aus Zeile und entfernt Copy-Paste-Artefakte (**,*, #, etc).
+    Rückgabe: Bereinigte URL oder leerer String.
+    """
+    line = line.strip()
+    if not line:
+        return ""
+    # Entferne führende Copy-Paste Marker: *, **, #, ##, etc
+    line = re.sub(r'^[\*#]+\s*', '', line)
+    # Versuche URL zu extrahieren
+    match = _RE_XTREAM.search(line)
+    if match:
+        return match.group(0)
+    return line if line.startswith("http") else ""
+
+
 def _process_portal_format(lines: list) -> list:
     """
     Konvertiert Portal+Credentials Format zu vollständigen M3U-URLs.
@@ -2120,7 +2137,11 @@ class ScanState:
                     if not line or line.startswith("#"):
                         # Überspringe leere Zeilen und Kommentare
                         continue
-                    qs = parse_qs(urlparse(line).query)
+                    # Extrahiere URL (entfernt **, *, #, etc.)
+                    url = _extract_url_from_line(line)
+                    if not url:
+                        continue
+                    qs = parse_qs(urlparse(url).query)
                     u  = qs.get("username", [None])[0]
                     pw = qs.get("password", [None])[0]
                     if u and pw:
@@ -2136,6 +2157,7 @@ class ScanState:
 
         Kommentare und [RECHECK:...] Marker werden ignoriert.
         Extrahiert URLs aus gültigen (nicht-kommentierten) Zeilen.
+        Entfernt Copy-Paste-Artefakte (**, *, #, etc).
         """
         urls = []
         for fname in [OUTPUT_FILE, TVONLY_FILE, VPN_FILE, CF_FILE, EXPIRING_FILE]:
@@ -2147,13 +2169,10 @@ class ScanState:
                     if not line or line.startswith("#"):
                         # Überspringe leere Zeilen und Kommentare
                         continue
-                    # Extrahiere URL (auch wenn noch Text drumrum ist)
-                    url_match = _RE_XTREAM.search(line)
-                    if url_match:
-                        urls.append(url_match.group(0))
-                    elif line:
-                        # Fallback: ganze Zeile ist URL
-                        urls.append(line)
+                    # Extrahiere URL (entfernt **, *, #, etc.)
+                    url = _extract_url_from_line(line)
+                    if url:
+                        urls.append(url)
         return urls
 
     def get_cf_cookie_header(self, host: str) -> str:
@@ -3647,7 +3666,10 @@ def sort_output_files() -> dict:
 
     def _netloc(line: str) -> str:
         try:
-            return urlparse(line.strip()).netloc.lower()
+            url = _extract_url_from_line(line)
+            if not url:
+                return "\xff"
+            return urlparse(url).netloc.lower()
         except Exception:
             return "\xff"   # sortiert ans Ende
 
@@ -3786,7 +3808,12 @@ def dedup_output_files() -> dict:
             unique_lines    = []
 
             for line in raw_lines:
-                qs = parse_qs(urlparse(line.strip()).query)
+                # Extrahiere URL (entfernt **, *, #, etc.)
+                url = _extract_url_from_line(line)
+                if not url:
+                    unique_lines.append(line)
+                    continue
+                qs = parse_qs(urlparse(url).query)
                 u  = qs.get("username", [None])[0]
                 pw = qs.get("password", [None])[0]
                 if not u or not pw:
@@ -3922,7 +3949,11 @@ def _run_export(env: EnvInfo):
                     m = _url_re.search(line)
                     if not m:
                         continue
-                    parsed = urlparse(line)
+                    # Extrahiere URL (entfernt **, *, #, etc.)
+                    url = _extract_url_from_line(line)
+                    if not url:
+                        continue
+                    parsed = urlparse(url)
                     host   = f"{parsed.scheme}://{parsed.netloc}"
                     user   = m.group(1)
                     pw     = m.group(2)
@@ -3933,7 +3964,7 @@ def _run_export(env: EnvInfo):
                     seen_keys.add(key)
                     entries.append({
                         "_key": key,
-                        "url":  line,
+                        "url":  url,
                         "host": host,
                         "u":    user,
                         "pw":   pw,
