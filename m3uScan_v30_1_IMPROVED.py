@@ -285,6 +285,13 @@ W                   = 64       # Terminal-Breite Portrait (Pydroid3)
 PRECHECK_TIMEOUT    = 3.5
 PRECHECK_ENABLED    = True
 
+# RE-CHECK MODE: Optimierte Einstellungen für bereits validierte Links
+# (sollten nicht zu streng sein - False-Positives vermeiden)
+RECHECK_PRECHECK_TIMEOUT = 5.0   # Längerer Timeout für Precheck (Server können langsamer sein)
+RECHECK_TIMEOUT          = 15    # Längeres Timeout für API-Calls (15s statt 10s)
+RECHECK_SAMPLE_CHECK     = False  # Sample-Check bei Re-Check DEAKTIVIERT
+                                   # (nicht nötig bei bereits validierten Links)
+
 DEAD_LINK_WARN_PCT  = 60
 
 CF_JITTER_BASE      = 3.0
@@ -2555,6 +2562,9 @@ async def check_account(session, host: str, u: str, pw: str,
     is_cf     = host in state._cf_hosts
     ssl_param = ssl_ctx  #
 
+    # Re-Check Mode: Längere Timeouts für bereits validierte Links
+    api_timeout = RECHECK_TIMEOUT if state.recheck_mode else TIMEOUT
+
     if is_cf:
         profile = state.get_cf_profile(host)
         hdrs    = _cf_nav_headers(profile)
@@ -2569,7 +2579,7 @@ async def check_account(session, host: str, u: str, pw: str,
             api,
             params={"username": u, "password": pw},
             headers=hdrs,
-            timeout=aiohttp.ClientTimeout(total=TIMEOUT),
+            timeout=aiohttp.ClientTimeout(total=api_timeout),
             ssl=ssl_param,
         ) as r:
             status    = r.status
@@ -2693,23 +2703,31 @@ async def check_account(session, host: str, u: str, pw: str,
         if not live_de:
             return None, "kein_de", False, False, 0, None, active, max_c, exp, "", {}
 
-        # --- Stichproben-Kanalcheck
-        if SAMPLE_CHECK:
+        # --- Stichproben-Kanalcheck (nicht im Re-Check Mode)
+        # Re-Check: Sample-Check DEAKTIVIERT (nicht nötig für bereits validierte Links)
+        streams_ok = True  # Default: akzeptiert
+        name_bonus = 0
+
+        if SAMPLE_CHECK and not state.recheck_mode:
             streams_ok, name_bonus = await sample_channel_check(
                 session, api, u, pw, api_hdrs, ssl_param, host
             )
             if not streams_ok:
                 return None, "sample_fail", False, False, 0, None, \
                        active, max_c, exp, "", {}
-            # Name-Bonus aus Kanalnamen auf live_score addieren
-            if name_bonus > 0 and not live_de:
-                live_de   = True
-                live_tier = 2
-                live_score = name_bonus
-            elif name_bonus > 0:
-                live_score += name_bonus
 
-        category = "both" if (vod_de or not vod_has_content) else "tvonly"
+        # Name-Bonus aus Kanalnamen auf live_score addieren
+        if name_bonus > 0 and not live_de:
+            live_de   = True
+            live_tier = 2
+            live_score = name_bonus
+        elif name_bonus > 0:
+            live_score += name_bonus
+
+        # Korrekte DE-Klassifizierung:
+        # - "both": Link liefert SOWOHL German Live TV ALS AUCH German Movies/VOD
+        # - "tvonly": Link liefert NUR German Live TV (keine German Movies)
+        category = "both" if vod_de else "tvonly"
 
         # --- VPN-Probe ---
         vpn_req = False
@@ -2816,11 +2834,14 @@ _precheck_cache: dict = {}
 _PRECHECK_TTL_OK  = 60.0   # Erfolge 60s cachen
 _PRECHECK_TTL_ERR = 30.0   # Fehler nur 30s cachen (kein Cache-Poisoning)
 
-async def tcp_precheck(host: str) -> bool:
+async def tcp_precheck(host: str, recheck_mode: bool = False) -> bool:
     """
     Echter TCP-Handshake via asyncio.open_connection().
     Kein Thread-Executor, kein loop-Parameter nötig.
     Getrennte Cache-TTL: OK=60s, Fehler=30s.
+
+    Bei recheck_mode=True: Längerer Timeout für bereits validierte Links.
+    (False-Positives vermeiden, da Server langsamer sein können)
     """
     global _precheck_cache
     now = time.monotonic()
@@ -2840,10 +2861,12 @@ async def tcp_precheck(host: str) -> bool:
         return False
 
     result = False
+    # Re-Check Mode: Längerer Timeout (5.0s vs 3.5s) für langsamere Server
+    timeout = RECHECK_PRECHECK_TIMEOUT if recheck_mode else PRECHECK_TIMEOUT
     try:
         reader, writer = await asyncio.wait_for(
             asyncio.open_connection(hostname, port),
-            timeout=PRECHECK_TIMEOUT,
+            timeout=timeout,
         )
         writer.close()
         try:
@@ -2852,9 +2875,6 @@ async def tcp_precheck(host: str) -> bool:
             pass
         result = True
     except Exception:
-        # v28: jeder Verbindungsfehler → False. Das vorherige Tupel war
-        # redundant (alle Typen sind Exception-Subklassen). CancelledError
-        # (BaseException) wird weiterhin NICHT gefangen → Cancel propagiert.
         result = False
 
     ttl = _PRECHECK_TTL_OK if result else _PRECHECK_TTL_ERR
@@ -2875,8 +2895,9 @@ async def worker(session, state: ScanState, url: str, ssl_ctx):
         return None
 
     # TCP-Vorprüfung (asyncio.open_connection, kein loop nötig)
+    # Re-Check Mode: Längerer Timeout für bereits validierte Links
     if PRECHECK_ENABLED:
-        reachable = await tcp_precheck(host)
+        reachable = await tcp_precheck(host, recheck_mode=state.recheck_mode)
         if not reachable:
             async with state.lock:
                 state.stats["precheck_skip"] += 1
