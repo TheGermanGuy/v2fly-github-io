@@ -4432,9 +4432,11 @@ def mark_invalid_links(input_urls: list, valid_urls: set, recheck_mode: bool = F
     Markiert ungültige Links als Kommentare in den Output-Dateien.
     Nur im Re-Check-Modus: Links die nicht in valid_urls sind, werden kommentiert.
 
-    Format: # [RECHECK:REASON:DATE] URL
-    Dies verhindert, dass sie bei zukünftigen Duplikat-Checks berücksichtigt werden,
-    aber sie bleiben in der Datei zur Nachverfolgung.
+    Ersetzt ALLE Zeilen (kommentiert oder nicht) mit ungültigen URLs durch
+    EINE Kommentarzeile. Dies verhindert Duplikate vollständig.
+
+    Format: # [RECHECK:INVALID:DATE] URL
+    Garantie: Jeder Link steht exakt 1x in der Datei (gültig oder kommentiert).
     """
     if not recheck_mode or not input_urls:
         return
@@ -4445,34 +4447,61 @@ def mark_invalid_links(input_urls: list, valid_urls: set, recheck_mode: bool = F
 
     timestamp = datetime.now().strftime("%Y-%m-%d")
 
-    # Für jede Output-Datei: ungültige Links anhängen (als Kommentar)
+    # Für jede Output-Datei: ungültige Links ERSETZEN (nicht anhängen!)
     for fname in [OUTPUT_FILE, TVONLY_FILE, VPN_FILE, CF_FILE, EXPIRING_FILE]:
         if not os.path.exists(fname):
             continue
 
-        # Lese gültige Links aus der Datei (nicht-Kommentare)
-        existing_urls = set()
+        # Lese gesamte Datei und baue neue Version
+        new_lines = []
+        invalid_urls_added = set()  # Verhindere doppelte Kommentare
+
         with open(fname, "r", encoding="utf-8") as f:
             for line in f:
-                line = line.strip()
-                if not line or line.startswith("#"):
+                line_stripped = line.strip()
+
+                # Leerzeilen behalten
+                if not line_stripped:
+                    new_lines.append("")
                     continue
-                # Extrahiere URL (entfernt **, *, #, etc.)
-                url = _extract_url_from_line(line)
-                if url:
-                    existing_urls.add(url)
 
-        # Finde URLs die in dieser Datei waren aber jetzt ungültig sind
-        invalid_in_file = invalid_urls & existing_urls
-        if not invalid_in_file:
-            continue
+                # Alle Kommentare behalten (auch alte RECHECK-Kommentare - aber nur einmal!)
+                if line_stripped.startswith("#"):
+                    if "RECHECK" in line_stripped:
+                        # RECHECK-Kommentar: extrahiere URL um Duplikate zu verhindern
+                        url = _extract_url_from_line(line_stripped)
+                        if url not in invalid_urls_added:
+                            # Noch nicht als Duplikat markiert - behalten
+                            new_lines.append(line_stripped)
+                            invalid_urls_added.add(url)
+                        # Sonst: überspringen (Duplikat)
+                    else:
+                        # Text-Kommentar: direkt behalten
+                        new_lines.append(line_stripped)
+                    continue
 
-        # Schreibe ungültige Links als Kommentare ans Ende der Datei (sicher)
-        content = ""
-        for url in sorted(invalid_in_file):
-            content += f"# [RECHECK:INVALID:{timestamp}] {url}\n"
-        if content:
-            _safe_write(fname, content, append=True)
+                # Extrahiere URL aus gültigen (nicht-kommentierten) Zeilen
+                url = _extract_url_from_line(line_stripped)
+                if not url:
+                    # Zeile mit ungültigem Format behalten
+                    new_lines.append(line_stripped)
+                    continue
+
+                # Prüfe ob diese URL ungültig ist
+                if url in invalid_urls:
+                    # Ersetze durch Kommentar-Version (NUR EINMAL pro URL)
+                    if url not in invalid_urls_added:
+                        new_lines.append(f"# [RECHECK:INVALID:{timestamp}] {url}")
+                        invalid_urls_added.add(url)
+                    # Sonst: Zeile ignorieren (Duplikat-Verhinderung)
+                else:
+                    # Gültige Zeile behalten (mit ** bereinigt)
+                    new_lines.append(url)
+
+        # Schreibe die bereinigte Datei zurück (atomar)
+        if new_lines:
+            content = "\n".join(new_lines) + "\n"
+            _safe_write(fname, content, append=False)
 
 
 def save_links(state: ScanState):
