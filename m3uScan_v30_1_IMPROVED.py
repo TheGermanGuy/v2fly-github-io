@@ -4328,9 +4328,21 @@ def run_menu() -> ScanConfig:
                 continue
             return None
 
+        # Sicherheits-Schritt: Bereinige alle URLs (entferne **, *, #, etc.)
+        # Falls URLs manuell mit Artefakten hinzugefügt wurden
+        cleaned_urls = []
+        for url in cfg.input_urls:
+            cleaned = _extract_url_from_line(url)
+            if cleaned:
+                cleaned_urls.append(cleaned)
+
+        if len(cleaned_urls) < len(cfg.input_urls):
+            removed = len(cfg.input_urls) - len(cleaned_urls)
+            print(c(C.YELLOW, f"  [{removed} URLs mit Artefakten bereinigt]"))
+
+        cfg.input_urls = cleaned_urls
         total = len(cfg.input_urls)
 
-        #
         unique_hosts = len({urlparse(u).netloc for u in cfg.input_urls})
         already_known = env.known_links
         print()
