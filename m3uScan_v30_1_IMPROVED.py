@@ -2108,6 +2108,7 @@ class ScanState:
         Lädt bereits bekannte Accounts aus den Ausgabedateien.
 
         Verhindert Re-Scan identischer Credentials auf anderen Hosts.
+        Ignoriert Kommentare (Zeilen die mit # beginnen).
         """
         count = 0
         for fname in [OUTPUT_FILE, TVONLY_FILE, VPN_FILE, CF_FILE, EXPIRING_FILE]:
@@ -2115,7 +2116,11 @@ class ScanState:
                 continue
             with open(fname, "r", encoding="utf-8") as f:
                 for line in f:
-                    qs = parse_qs(urlparse(line.strip()).query)
+                    line = line.strip()
+                    if not line or line.startswith("#"):
+                        # Überspringe leere Zeilen und Kommentare
+                        continue
+                    qs = parse_qs(urlparse(line).query)
                     u  = qs.get("username", [None])[0]
                     pw = qs.get("password", [None])[0]
                     if u and pw:
@@ -2128,6 +2133,9 @@ class ScanState:
         Lädt Links aus bestehenden Output-Dateien zum Re-Check.
         Ignoriert checked_keys — alle Links werden neu geprüft.
         Rückgabe: Liste von URLs (wie input_urls).
+
+        Kommentare und [RECHECK:...] Marker werden ignoriert.
+        Extrahiert URLs aus gültigen (nicht-kommentierten) Zeilen.
         """
         urls = []
         for fname in [OUTPUT_FILE, TVONLY_FILE, VPN_FILE, CF_FILE, EXPIRING_FILE]:
@@ -2136,7 +2144,15 @@ class ScanState:
             with open(fname, "r", encoding="utf-8") as f:
                 for line in f:
                     line = line.strip()
-                    if line:
+                    if not line or line.startswith("#"):
+                        # Überspringe leere Zeilen und Kommentare
+                        continue
+                    # Extrahiere URL (auch wenn noch Text drumrum ist)
+                    url_match = _RE_XTREAM.search(line)
+                    if url_match:
+                        urls.append(url_match.group(0))
+                    elif line:
+                        # Fallback: ganze Zeile ist URL
                         urls.append(line)
         return urls
 
@@ -4320,6 +4336,54 @@ def run_menu() -> ScanConfig:
 # ==============================================================
 # DATEIEN SPEICHERN
 # ==============================================================
+def mark_invalid_links(input_urls: list, valid_urls: set, recheck_mode: bool = False) -> None:
+    """
+    Markiert ungültige Links als Kommentare in den Output-Dateien.
+    Nur im Re-Check-Modus: Links die nicht in valid_urls sind, werden kommentiert.
+
+    Format: # [RECHECK:REASON:DATE] URL
+    Dies verhindert, dass sie bei zukünftigen Duplikat-Checks berücksichtigt werden,
+    aber sie bleiben in der Datei zur Nachverfolgung.
+    """
+    if not recheck_mode or not input_urls:
+        return
+
+    invalid_urls = set(input_urls) - valid_urls
+    if not invalid_urls:
+        return
+
+    timestamp = datetime.now().strftime("%Y-%m-%d")
+
+    # Für jede Output-Datei: ungültige Links anhängen (als Kommentar)
+    for fname in [OUTPUT_FILE, TVONLY_FILE, VPN_FILE, CF_FILE, EXPIRING_FILE]:
+        if not os.path.exists(fname):
+            continue
+
+        # Lese gültige Links aus der Datei (nicht-Kommentare)
+        existing_urls = set()
+        with open(fname, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                url_match = _RE_XTREAM.search(line)
+                if url_match:
+                    existing_urls.add(url_match.group(0))
+
+        # Finde URLs die in dieser Datei waren aber jetzt ungültig sind
+        invalid_in_file = invalid_urls & existing_urls
+        if not invalid_in_file:
+            continue
+
+        # Schreibe ungültige Links als Kommentare ans Ende der Datei
+        try:
+            with open(fname, "a", encoding="utf-8") as f:
+                for url in sorted(invalid_in_file):
+                    f.write(f"# [RECHECK:INVALID:{timestamp}] {url}\n")
+        except Exception:
+            pass
+
+
 def save_links(state: ScanState):
     """
    
@@ -4588,6 +4652,14 @@ async def _async_main():
     print_summary(state)
     print()
     save_links(state)
+
+    # Re-Check-Modus: Markiere ungültige Links als Kommentare
+    if cfg.recheck_mode:
+        valid_urls = set(
+            state.free_links + state.tvonly_links + state.vpn_links +
+            state.cf_links + state.expiring_links
+        )
+        mark_invalid_links(cfg.input_urls, valid_urls, recheck_mode=True)
 
     # ──
     _scan_elapsed = time.monotonic() - _scan_start
