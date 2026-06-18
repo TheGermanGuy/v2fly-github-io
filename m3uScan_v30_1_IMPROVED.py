@@ -1362,7 +1362,7 @@ _DE_TIER2 = re.compile(
     r'\bDEUTSCH\b|\bGERMAN\b|\bGER\b|\bGERMANY\b|'
     r'\bBUNDESLIGA\b|\bDFB[\s-]?POKAL\b|'
     r'\bTATORT\b|\bSPORTSCHAU\b|\bTAGESSCHAU\b|'
-    r'\bDE\s*:\s|\bDE\s*\||\|DE\b|\[DE\]|\(DE\)|'
+    r'\bDE\s*[:\|\-]|\|DE\b|\[DE\]|\(DE\)|'  # Erkenne: DE: DE| DE- (mit/ohne Leerzeichen)
     # Literal Unicode + erweiterter Pfeilsatz (➽❖ neu gegenüber
     r'\bDE\s*[◆•►▶★»➤➜➔➽❖]|'
     r'[◆•►▶★»➤➜➔]\s*\bDE\b'
