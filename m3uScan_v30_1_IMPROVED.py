@@ -4301,7 +4301,11 @@ def run_menu() -> ScanConfig:
                 cf_urls = []
                 if os.path.exists(CF_FILE):
                     with open(CF_FILE, "r", encoding="utf-8") as f:
-                        cf_urls = [l.strip() for l in f if l.strip()]
+                        for line in f:
+                            # Extrahiere URL (entfernt **, *, #, etc.)
+                            url = _extract_url_from_line(line)
+                            if url:
+                                cf_urls.append(url)
                 cfg.input_urls = cf_urls + _RE_XTREAM.findall("\n".join(lines))
             else:
                 # Standard: Xtream-URLs per Regex extrahieren +
@@ -4441,9 +4445,10 @@ def mark_invalid_links(input_urls: list, valid_urls: set, recheck_mode: bool = F
                 line = line.strip()
                 if not line or line.startswith("#"):
                     continue
-                url_match = _RE_XTREAM.search(line)
-                if url_match:
-                    existing_urls.add(url_match.group(0))
+                # Extrahiere URL (entfernt **, *, #, etc.)
+                url = _extract_url_from_line(line)
+                if url:
+                    existing_urls.add(url)
 
         # Finde URLs die in dieser Datei waren aber jetzt ungültig sind
         invalid_in_file = invalid_urls & existing_urls
