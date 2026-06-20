@@ -1152,14 +1152,17 @@ async def generate_m3u_plus_for_account(
     _DE_GRP = re.compile(
         r'(?:'
         r'\b(?:ARD|ZDF|WDR|NDR|SWR|MDR|RBB|BR|HR|SR|3SAT|PHOENIX|'
-        r'ARTE\s*DE|TAGESSCHAU24|ONE|FUNK|KiKA|KIKA)\b|'
+        # Bare "ONE" entfernt (siehe _DE_TIER1): zu generisch → False-Positives.
+        r'ARTE\s*DE|TAGESSCHAU24|FUNK|KiKA|KIKA)\b|'
         r'\b(?:RTL\+?|RTL2|RTLNITRO|VOX|NTV|N-TV|SUPER\s*RTL)\b|'
         r'\b(?:PROSIEBEN|PRO7|SAT\.?1|KABEL\s*EINS|SIXX|SAT1GOLD|PROSIEBEN\s*MAXX)\b|'
         r'\b(?:DAZN\s*DE|SKY\s*DE|MAGENTASPORT|SPORT1|EUROSPORT\s*DE|'
         r'BILD\s*SPORT|SPORT\s*1\+|SPORT1\s*EXTRA)\b|'
         r'\b(?:ORF\s*[123]|ORFIII|SERVUS\s*TV|PULS4|ATV2?|'
         r'SRF\s*(?:1|2|ZWEI|INFO)|3PLUS|TV24|TELECLUB)\b|'
-        r'\b(?:JOYN\+?|MAGENTA\s*TV|SKY\s*SPORT|SKY\s*CINEMA|SKY\s*ONE|'
+        # SKY CINEMA / SKY ONE entfernt (siehe _DE_TIER1): international
+        # geteilte bzw. UK-exklusive Marken → False-Positives bei UK/IE-Listen.
+        r'\b(?:JOYN\+?|MAGENTA\s*TV|SKY\s*SPORT|'
         r'DISCOVERY\s*DE|TLC\s*DE|DMAX\s*DE|ROMANCE\s*TV|HISTORY\s*DE|'
         r'NAT\s*GEO\s*DE)\b|'
         r'\b(?:NICK\s*DE|CARTOON\s*NETWORK\s*DE|DISNEY\s*DE|TOGGO\s*PLUS)\b|'
@@ -1170,8 +1173,8 @@ async def generate_m3u_plus_for_account(
         r'\b(?:ZDF\s*NEO|SKY\s*KRIMI|KABEL\s*EINS\s*DOKU|'
         r'TERRA\s*X|WELT\s*DER\s*WUNDER|'
         r'PARAMOUNT\+?\s*DE|JOYN\s*ORIGINALS|'
-        r'APPLE\s*TV\+?\s*DE|PEACOCK\s*DE|'
-        r'SKY\s*NATURE|SKY\s*DOCUMENTARIES)\b|'
+        # SKY NATURE / SKY DOCUMENTARIES entfernt (siehe _DE_TIER1): UK-Marken.
+        r'APPLE\s*TV\+?\s*DE|PEACOCK\s*DE)\b|'
         r'\b(?:SPORT1\+|EUROSPORT\s*1\s*DE|EUROSPORT\s*2\s*DE|'
         r'SKY\s*ATLANTIC|SKY\s*COMEDY|SKY\s*ACTION|SKY\s*REPLAY|'
         r'BUNDESLIGA|CHAMPIONS\s*LEAGUE|EUROPA\s*LEAGUE|DFB\s*POKAL|'
@@ -1332,12 +1335,19 @@ _DE_TIER1 = re.compile(
     # Literal Unicode: ◆•●►▶★» – Zeichenbereich À-ɏ (U+00C0–U+024F)
     r'DE\s*[◆•●►▶★»]\s*[A-Z0-9À-ɏ]|'
     r'\b(?:ARD|ZDF|WDR|NDR|SWR|MDR|RBB|HR|BR|SR|3SAT|PHOENIX|'
-    r'ARTE\s*DE|TAGESSCHAU24|ONE|FUNK|KiKA|KIKA)\b|'
+    # Bare "ONE" entfernt: zu generisch (matcht "Sky One", "TV One",
+    # "One Sports" etc.) → False-Positives. ARD-Sender ONE wird ueber die
+    # uebrigen OERR-Sender (ARD/WDR/NDR ...) miterkannt.
+    r'ARTE\s*DE|TAGESSCHAU24|FUNK|KiKA|KIKA)\b|'
     r'\b(?:RTL\+?|RTL2|RTLNITRO|VOX|NTV|N-TV|SUPER\s*RTL)\b|'
     r'\b(?:PROSIEBEN|PRO7|SAT\.?1|KABEL\s*EINS|SIXX|SAT1GOLD|PROSIEBEN\s*MAXX)\b|'
     r'\b(?:DAZN\s*DE|SKY\s*DE|MAGENTASPORT|SPORT1|EUROSPORT\s*DE|'
     r'BILD\s*SPORT|SPORT\s*1\+|SPORT1\s*EXTRA)\b|'
-    r'\b(?:JOYN\+?|MAGENTA\s*TV|SKY\s*SPORT|SKY\s*CINEMA|SKY\s*ONE|'
+    # SKY CINEMA / SKY ONE entfernt: international geteilte Marken (Sky UK/IT/DE
+    # nutzen identische Namen, "Sky One" ist sogar UK-exklusiv) → False-Positives
+    # bei UK/IE/US-Listen. Unzweideutig deutsch bleibt SKY DE / SKY DEUTSCHLAND.
+    # SKY SPORT (Singular) bleibt: \b schützt vor UK "Sky Sports" (Plural).
+    r'\b(?:JOYN\+?|MAGENTA\s*TV|SKY\s*SPORT|'
     r'DISCOVERY\s*DE|TLC\s*DE|DMAX\s*DE|ROMANCE\s*TV|HISTORY\s*DE|'
     r'NAT\s*GEO\s*DE)\b|'
     r'\b(?:ORF\s*[123]|ORFIII|SERVUS\s*TV|PULS4|ATV2?|'
@@ -1350,8 +1360,9 @@ _DE_TIER1 = re.compile(
     r'\b(?:ZDF\s*NEO|SKY\s*KRIMI|KABEL\s*EINS\s*DOKU|'
     r'TERRA\s*X|WELT\s*DER\s*WUNDER|'
     r'PARAMOUNT\+?\s*DE|JOYN\s*ORIGINALS|'
-    r'APPLE\s*TV\+?\s*DE|PEACOCK\s*DE|'
-    r'SKY\s*NATURE|SKY\s*DOCUMENTARIES)\b|'
+    # SKY NATURE / SKY DOCUMENTARIES entfernt: UK-Sky-Marken, kein
+    # zuverlaessiges deutsches Signal → False-Positives bei UK-Listen.
+    r'APPLE\s*TV\+?\s*DE|PEACOCK\s*DE)\b|'
     r'BILD\+(?=[\s|,\[\]()\-]|$)'
     r')',
     re.IGNORECASE,
