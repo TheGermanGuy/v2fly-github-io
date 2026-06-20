@@ -322,6 +322,11 @@ CAT_MIN_COUNT       = 5
 SAMPLE_CHECK        = True
 SAMPLE_TIMEOUT      = 5
 
+# Kanalnamen-Erkennung (Primärsignal): echte Kanalnamen (ARD, ZDF, ...) werden
+# auf deutschen Inhalt geprüft – auch wenn die Kategorien englisch/generisch
+# benannt sind. Es werden bis zu N Kanalnamen durch das DE-Scoring geschickt.
+CHANNEL_NAME_SCAN_MAX = 4000
+
 # Checkpoint (Scan-Fortschritt speichern) – adaptive Mobile-Optimierung
 CHECKPOINT_FILE     = "scan_checkpoint.json"
 CHECKPOINT_EVERY    = 50       # Standard (erhöht auf Mobile)
@@ -2325,19 +2330,22 @@ def save_checkpoint(state: "ScanState", processed: int, input_urls: list = None)
 
 
 # ==============================================================
-# STICHPROBEN-KANALCHECK
+# KANALNAMEN-ERKENNUNG (Primärsignal) + STICHPROBEN-LIVENESS
 # ==============================================================
-async def sample_channel_check(session, api: str, u: str, pw: str,
-                                hdrs: dict, ssl_param,
-                                host: str) -> tuple:
+async def fetch_live_channel_names(session, api: str, u: str, pw: str,
+                                   hdrs: dict, ssl_param) -> tuple:
     """
-    Lädt einen zufälligen Live-Kanal aus get_live_streams.
-    Gibt (stream_ok: bool, name_bonus: int) zurück.
-      stream_ok=True   wenn mindestens ein Stream antwortet (200/206).
-      name_bonus       Anzahl DE-Tier1-Treffer in Kanalnamen der Stichprobe.
-    False wenn alle Stichproben-Streams tot sind.
+    Lädt get_live_streams EINMAL und bewertet die ECHTEN Kanalnamen auf
+    deutschen Inhalt (Primärsignal, Tier1 + Tier2).
 
-   
+    Hintergrund: Viele Panels benennen ihre Kategorien generisch/englisch
+    ("Entertainment", "Movies", "Sports"), führen die deutschen Sender aber
+    klar im Kanalnamen ("ARD", "ZDF", "Das Erste HD", ...). Kategorien allein
+    würden solche Listen verpassen → Kanalnamen sind das zuverlässigste Signal.
+
+    Returns: (streams | None, name_is_de: bool, name_tier: int, name_score: int)
+      streams  = geparste Live-Stream-Liste (zur Wiederverwendung für Liveness)
+                 oder None, wenn nicht abrufbar.
     """
     raw = await _fetch_api(
         session, api,
@@ -2346,31 +2354,50 @@ async def sample_channel_check(session, api: str, u: str, pw: str,
         hdrs, TIMEOUT, ssl_param,
     )
     if not raw:
-        return True, 0
+        return None, False, 0, 0
 
     try:
         streams = json.loads(raw)
         if not isinstance(streams, list) or not streams:
-            return True, 0
+            return None, False, 0, 0
     except Exception:
-        return True, 0
+        return None, False, 0, 0
 
-    # Zufällige Stichprobe: max. 3 Streams testen
+    # Kanalnamen scannen: bis zu CHANNEL_NAME_SCAN_MAX Namen durch das
+    # DE-Scoring. Begrenzung schützt vor extrem großen Listen, ist aber hoch
+    # genug, um auch wenige deutsche Sender in großen Panels zu finden
+    # (zufällige Mini-Stichprobe würde 1-%-Anteile verpassen).
+    if len(streams) > CHANNEL_NAME_SCAN_MAX:
+        scan = random.sample(streams, CHANNEL_NAME_SCAN_MAX)
+    else:
+        scan = streams
+    name_text = " | ".join(str(s.get("name", "")) for s in scan)
+
+    # cat_count=999 → keine Halbierung (Namen sind keine Kategorien);
+    # tz_bonus=0 → reines Inhaltssignal aus den Kanalnamen.
+    name_is_de, name_tier, name_score = score_de_content(
+        name_text, vod_mode=False, tz_bonus=0, cat_count=999
+    )
+    return streams, name_is_de, name_tier, name_score
+
+
+async def probe_streams_alive(session, host: str, u: str, pw: str,
+                              hdrs: dict, ssl_param, streams) -> bool:
+    """
+    Liveness-Probe: testet max. 3 zufällige Streams.
+    True, wenn mindestens einer mit 200/206 antwortet (oder keine Streams
+    zum Testen vorliegen). False, wenn alle Stichproben-Streams tot sind.
+    """
+    if not streams:
+        return True
+
     sample = random.sample(streams, min(3, len(streams)))
-
-    #
-    name_sample = random.sample(streams, min(10, len(streams)))
-    name_text   = " | ".join(s.get("name", "") for s in name_sample)
-    name_bonus  = len(set(m.upper() for m in _DE_TIER1.findall(name_text)))
-
-    stream_ok = False
     for stream in sample:
         sid = stream.get("stream_id") or stream.get("id")
         if not sid:
             continue
         test_url = f"{host}/{u}/{pw}/{sid}.ts"
-        cb       = f"_cb={int(time.time()*1000)}"
-        url      = f"{test_url}?{cb}"
+        url      = f"{test_url}?_cb={int(time.time()*1000)}"
         try:
             async with session.get(
                 url,
@@ -2381,12 +2408,11 @@ async def sample_channel_check(session, api: str, u: str, pw: str,
             ) as r:
                 if r.status in (200, 206):
                     await r.read()
-                    stream_ok = True
-                    break
+                    return True
         except Exception:
             continue
 
-    return stream_ok, name_bonus
+    return False
 
 
 # ==============================================================
@@ -2721,29 +2747,39 @@ async def check_account(session, host: str, u: str, pw: str,
         vod_de, vod_tier, vod_score, vod_has_content = vod_result
         is_adult, a_score, a_tier = adult_result
 
+        # --- Kanalnamen als PRIMÄRSIGNAL ---------------------------------
+        # Echte Kanalnamen (ARD, ZDF, Das Erste, ...) erkennen deutschen
+        # Inhalt auch dann, wenn die Kategorien englisch/generisch benannt
+        # sind. Dies läuft VOR der kein_de-Entscheidung und kann einen Link
+        # "retten", den die Kategorie-Erkennung allein verpasst hätte.
+        # (Re-Check-Modus: übersprungen – Links sind bereits validiert.)
+        streams_cache = None
+        if SAMPLE_CHECK and not state.recheck_mode:
+            (streams_cache, name_is_de,
+             name_tier, name_score) = await fetch_live_channel_names(
+                session, api, u, pw, api_hdrs, ssl_param
+            )
+            if name_is_de and not live_de:
+                # Kategorien sagten "kein DE", Kanalnamen aber schon → retten.
+                live_de, live_tier, live_score = True, name_tier, name_score
+            elif name_is_de:
+                # Beide Signale stimmen → Konfidenz erhöhen.
+                live_score += name_score
+
         if not live_de:
             return None, "kein_de", False, False, 0, None, active, max_c, exp, "", {}
 
-        # --- Stichproben-Kanalcheck (nicht im Re-Check Mode)
-        # Re-Check: Sample-Check DEAKTIVIERT (nicht nötig für bereits validierte Links)
-        streams_ok = True  # Default: akzeptiert
-        name_bonus = 0
-
+        # --- Liveness-Probe (nur für DE-Kandidaten, nicht im Re-Check) ----
+        # Stream-Liveness wird erst geprüft, nachdem ein Link als deutsch
+        # gilt – spart Probes für verworfene Links. Wiederverwendung der
+        # bereits geladenen Stream-Liste (streams_cache).
         if SAMPLE_CHECK and not state.recheck_mode:
-            streams_ok, name_bonus = await sample_channel_check(
-                session, api, u, pw, api_hdrs, ssl_param, host
+            streams_ok = await probe_streams_alive(
+                session, host, u, pw, api_hdrs, ssl_param, streams_cache
             )
             if not streams_ok:
                 return None, "sample_fail", False, False, 0, None, \
                        active, max_c, exp, "", {}
-
-        # Name-Bonus aus Kanalnamen auf live_score addieren
-        if name_bonus > 0 and not live_de:
-            live_de   = True
-            live_tier = 2
-            live_score = name_bonus
-        elif name_bonus > 0:
-            live_score += name_bonus
 
         # Korrekte DE-Klassifizierung:
         # - "both": Link liefert SOWOHL German Live TV ALS AUCH German Movies/VOD
