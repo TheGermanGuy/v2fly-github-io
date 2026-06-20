@@ -1424,7 +1424,8 @@ _DE_GENRE_NAMES = re.compile(
 # ==============================================================
 _ADULT_TIER1 = re.compile(
     r'(?:'
-    r'\bXXX\b|\bPORN(?:O|OS)?\b|\bADULT\b|'
+    r'\bXXX\b|\bPORN(?:O|OS)?\b|\bADULT\b|\bADULTI\b|'  # ADULTI (italienisch) hinzugefügt
+    r'[\-─–—]\s*ADULTI\b|'  # ------- ADULTI ------- Bindestrich-Variationen
     r'\b18\s*[\+\|]\s*(?:ONLY|CONTENT|CHANNEL|LIVE|STREAM)?\b|'
     r'\bEROTI[CK]\b|\bEROTIK\b|'
     r'\bHARDCORE\b|\bSOFTCORE\b|'
@@ -1634,7 +1635,7 @@ _RE_CREDS = re.compile(
 
 # Optimierte Pre-Compiled Patterns für Hot-Paths
 _FOR_ADULT_PFX = re.compile(r'^FOR\s*(?:\||✦|►|•|◆|▶)', re.IGNORECASE)
-_ADULT_KEYWORDS = re.compile(r'\bADULT\b|\bXXX\b|\bPORN\b', re.IGNORECASE)
+_ADULT_KEYWORDS = re.compile(r'\bADULT\b|\bADULTI\b|\bXXX\b|\bPORN\b', re.IGNORECASE)
 _ANSI_ESCAPE = re.compile(r"\033\[[0-9;]*m")
 _SAFE_FILENAME = re.compile(r'[^\w\-.]')
 _SAFE_FILENAME_USER = re.compile(r'[^\w\-]')
