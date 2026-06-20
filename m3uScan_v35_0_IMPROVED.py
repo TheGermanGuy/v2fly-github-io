@@ -4528,6 +4528,87 @@ def mark_invalid_links(input_urls: list, valid_urls: set, recheck_mode: bool = F
             _safe_write(fname, content, append=False)
 
 
+def deduplicate_de_files() -> None:
+    """
+    Dedupliziert Links zwischen free_links.txt und free_links_TVonly.txt.
+
+    Sicherstellt dass kein Link in BEIDEN Dateien existiert.
+    - Wenn Link in both: Nur in free_links.txt behalten
+    - Wenn Link in tvonly: Nur in free_links_TVonly.txt behalten
+
+    Problem: Wenn sich die DE-Erkennungslogik verfeinert, kann ein Link
+    in Session 1 als "tvonly" erkannt und in Session N als "both" erkannt werden.
+    Dadurch existiert der Link in beiden Dateien. Diese Funktion bereinigt das.
+    """
+    if not os.path.exists(OUTPUT_FILE) or not os.path.exists(TVONLY_FILE):
+        return
+
+    # Lade alle URLs aus beiden Dateien
+    both_urls = set()      # URLs aus free_links.txt
+    tvonly_urls = set()    # URLs aus free_links_TVonly.txt
+
+    # Lese free_links.txt (both)
+    if os.path.exists(OUTPUT_FILE):
+        with open(OUTPUT_FILE, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                url = _extract_url_from_line(line)
+                if url:
+                    both_urls.add(url)
+
+    # Lese free_links_TVonly.txt
+    if os.path.exists(TVONLY_FILE):
+        with open(TVONLY_FILE, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                url = _extract_url_from_line(line)
+                if url:
+                    tvonly_urls.add(url)
+
+    # Finde Duplikate (URLs die in BEIDEN Dateien sind)
+    duplicates = both_urls & tvonly_urls
+
+    if not duplicates:
+        return  # Keine Duplikate gefunden
+
+    print(c(C.YELLOW, f"\n⚠ Deduplizierung: {len(duplicates)} Link(s) in BEIDEN Dateien gefunden"))
+    print(c(C.YELLOW, f"  → Entferne Duplikate aus free_links_TVonly.txt"))
+    print(c(C.YELLOW, f"  → Behalte Links nur in free_links.txt (höhere Priorität)\n"))
+
+    # Entferne Duplikate aus free_links_TVonly.txt
+    # Behalte nur Links die NICHT in free_links.txt sind
+    tvonly_urls_cleaned = tvonly_urls - duplicates
+
+    # Schreibe bereinigte free_links_TVonly.txt
+    if tvonly_urls_cleaned:
+        new_lines = []
+        with open(TVONLY_FILE, "r", encoding="utf-8") as f:
+            for line in f:
+                line_stripped = line.strip()
+
+                # Leerzeilen und reale Kommentare behalten
+                if not line_stripped or line_stripped.startswith("#"):
+                    new_lines.append(line_stripped)
+                    continue
+
+                # URL extrahieren
+                url = _extract_url_from_line(line_stripped)
+                if url and url not in duplicates:
+                    # URL ist NICHT im Duplikat-Set → behalten
+                    new_lines.append(url)
+
+        # Schreibe zurück
+        content = "\n".join(new_lines) + "\n"
+        _safe_write(TVONLY_FILE, content, append=False)
+    else:
+        # Alle Links waren Duplikate → Datei leeren/löschen
+        _safe_write(TVONLY_FILE, "", append=False)
+
+
 def save_links(state: ScanState):
     """
    
@@ -4795,7 +4876,12 @@ async def _async_main():
 
     print_summary(state)
     print()
+
     save_links(state)
+
+    # Deduplizierung: Sicherstelle dass Links nur in EINER Datei existieren
+    # (Am Ende aufrufen, um alte + neue Duplikate zu bereinigen)
+    deduplicate_de_files()
 
     # Re-Check-Modus: Markiere ungültige Links als Kommentare
     if cfg.recheck_mode:
