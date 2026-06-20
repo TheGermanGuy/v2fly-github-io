@@ -1329,8 +1329,8 @@ _DE_TIER1 = re.compile(
     r'(?:'
     r'🇩🇪|'
     r'group-title\s*=\s*"[^"]*(?:\bDE\b|GERMANY|DEUTSCHLAND|DEUTSCH)[^"]*"|'
-    # Literal Unicode: ◆•►▶★» – Zeichenbereich À-ɏ (U+00C0–U+024F)
-    r'DE\s*[◆•►▶★»]\s*[A-Z0-9À-ɏ]|'
+    # Literal Unicode: ◆•●►▶★» – Zeichenbereich À-ɏ (U+00C0–U+024F)
+    r'DE\s*[◆•●►▶★»]\s*[A-Z0-9À-ɏ]|'
     r'\b(?:ARD|ZDF|WDR|NDR|SWR|MDR|RBB|HR|BR|SR|3SAT|PHOENIX|'
     r'ARTE\s*DE|TAGESSCHAU24|ONE|FUNK|KiKA|KIKA)\b|'
     r'\b(?:RTL\+?|RTL2|RTLNITRO|VOX|NTV|N-TV|SUPER\s*RTL)\b|'
@@ -1363,9 +1363,9 @@ _DE_TIER2 = re.compile(
     r'\bBUNDESLIGA\b|\bDFB[\s-]?POKAL\b|'
     r'\bTATORT\b|\bSPORTSCHAU\b|\bTAGESSCHAU\b|'
     r'\bDE\s*[:\|\-]|\|DE\b|\[DE\]|\(DE\)|'  # Erkenne: DE: DE| DE- (mit/ohne Leerzeichen)
-    # Literal Unicode + erweiterter Pfeilsatz (➽❖ neu gegenüber
-    r'\bDE\s*[◆•►▶★»➤➜➔➽❖]|'
-    r'[◆•►▶★»➤➜➔]\s*\bDE\b'
+    # Literal Unicode + erweiterter Pfeilsatz (●➽❖ neu gegenüber
+    r'\bDE\s*[◆•●►▶★»➤➜➔➽❖]|'
+    r'[◆•●►▶★»➤➜➔]\s*\bDE\b'
     r')',
     re.IGNORECASE,
 )
