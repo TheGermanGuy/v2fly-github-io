@@ -1362,6 +1362,8 @@ _DE_TIER2 = re.compile(
     r'\bDEUTSCH\b|\bGERMAN\b|\bGER\b|\bGERMANY\b|'
     r'\bBUNDESLIGA\b|\bDFB[\s-]?POKAL\b|'
     r'\bTATORT\b|\bSPORTSCHAU\b|\bTAGESSCHAU\b|'
+    r'\bDE\b|'  # Einzelnes DE (z.B. als Kanalname oder in Listen)
+    r'[\-─–—]\s*DE\b|'  # Bindestrich vor DE: --- DE, -- DE, etc.
     r'\bDE\s*[:\|\-]|\|DE\b|\[DE\]|\(DE\)|'  # Erkenne: DE: DE| DE- (mit/ohne Leerzeichen)
     # Literal Unicode + erweiterter Pfeilsatz (●➽❖ neu gegenüber
     r'\bDE\s*[◆•●►▶★»➤➜➔➽❖]|'
@@ -1377,13 +1379,13 @@ _DE_EXCLUDE = re.compile(
     r'DELL|DELTA|DELIVERY|DEFEND|DEFINED|DEFEAT|DELETE|DEPLOY|'
     # Neue False-Positives aus Datenbanken:
     r'DE AGOSTINI|DE GEA|DELAWARE|DENTAL|DEPOT|DERMA|DEVOPS|'
-    r'DEPO|DEPLOY|DESERT|DETECT|DEFY|देWA|DEWAR|DEVAIR|'
+    r'DEPO|DESERT|DETECT|DEFY|देWA|DEWAR|DEVAIR|'
     # Brand/Marken-Namen:
     r'DEERE|DEUTZ|DEGUSSA|DENON|DELPHI|DENSPLY|'
     # Geographische Fehlmatch:
-    r'DELAWARE|DELHI|DENVER|DETROIT|DELAWARE|'
+    r'DELHI|DENVER|DETROIT|'
     # Tech/System:
-    r'DEBUG|DEFRAG|DEFECTS|DEFINE|DEFUNCT|'
+    r'DEBUG|DEFRAG|DEFECTS|DEFINE|DEFUNCT'
     r')\b',
     re.IGNORECASE,
 )
