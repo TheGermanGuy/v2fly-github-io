@@ -1593,7 +1593,14 @@ def score_de_content(text: str, vod_mode: bool = False,
         vod_extra = set(m.upper().strip() for m in _VOD_TIER1_EXTRA.findall(combined_text))
         score += len(vod_extra) * 3
 
-    score += tz_bonus
+    # WICHTIG (False-Positive-Schutz):
+    # tz_bonus (Timezone/Country/EPG) ist NUR ein Verstärker für ECHTEN
+    # deutschen Inhalt – niemals ein alleiniger Auslöser. Ein Server mit
+    # DE-Timezone/-Country/.de-EPG aber ohne einen einzigen deutschen
+    # Kanal-Treffer darf NICHT als deutsch klassifiziert werden.
+    # (Bsp.: FR/AR/UK/US-Listen auf einem Panel mit Europe/Berlin-Zeitzone.)
+    if score > 0:
+        score += tz_bonus
     score -= excl_count
 
     # Kategorienzahl-Check: wenige Kategorien → Score halbieren
