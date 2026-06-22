@@ -1983,6 +1983,8 @@ def print_config_banner(total: int, loaded: int, cf_preloaded: int,
         ("Kat-Min",           f"{CAT_MIN_COUNT} (Score /2 darunter)"),
         ("Streaming-Output",  "JA (sofort)"),
         ("SSL-Prüfung",        "False (kein JA3-Fingerprint)"),
+        # Opt #8: Config transparency - add Mobile mode
+        ("Mobile-Modus",      "JA" if IS_MOBILE else "NEIN"),
     ]
     for k, v in rows:
         print(f"  {c(C.DIM, f'{k:<22}')} {c(C.WHITE, v)}")
@@ -2035,6 +2037,12 @@ def print_summary(state):
     print(c(C.BOLD + C.WHITE, " SCAN-ERGEBNIS"))
     print(_sep())
 
+    # Opt #6: Bilanz-first approach - show summary first
+    _bilanz_hits = state.stats.get("neu_de", 0) + state.stats.get("tvonly", 0) + state.stats.get("vpn_de", 0)
+    if total_processed > 0:
+        _bilanz_pct = (_bilanz_hits / total_processed) * 100
+        print(c(C.GREEN + C.BOLD, f"  ▶ BILANZ: {_bilanz_hits} Treffer / {total_processed} verarbeitet ({_bilanz_pct:.1f}%) gefunden"))
+
     for col, label, key, fname in hit_rows:
         val = state.stats.get(key, 0)
         if val == 0 and key not in ("neu_de", "tvonly", "vpn_de", "cf"):
@@ -2069,6 +2077,21 @@ def print_summary(state):
             print(line)
 
     print(_sep())
+
+    # Opt #3: File-routing counts from OutputBuffer
+    print(c(C.BOLD, "  ▶ GESCHRIEBENE DATEIEN:"))
+    file_stats = [
+        (OUTPUT_FILE, C.GREEN),
+        (TVONLY_FILE, C.CYAN),
+        (VPN_FILE, C.PURPLE),
+        (CF_FILE, C.ORANGE),
+        (EXPIRING_FILE, C.YELLOW),
+    ]
+    for fname, col in file_stats:
+        buffer = _output_buffers.get(fname)
+        if buffer and buffer.total_written > 0:
+            print(c(col, f"    {fname:<30} {buffer.total_written:>4} Links gepuffert"))
+    print()
 
     dead = state.stats.get("tcp_fehler", 0) + state.stats.get("dns_fehler", 0)
     if total_processed > 0:
@@ -2397,7 +2420,7 @@ def detect_panel_type(server_info: dict) -> str:
 # CHECKPOINT
 # ==============================================================
 def save_checkpoint(state: "ScanState", processed: int, input_urls: list = None):
-    """Speichert aktuellen Scan-Fortschritt in CHECKPOINT_FILE."""
+    """Speichert aktuellen Scan-Fortschritt in CHECKPOINT_FILE (blocking, für asyncio.to_thread)."""
     try:
         urls = input_urls if input_urls is not None else []
         # input_urls ist während eines Scans konstant → Hash nur einmal je
@@ -3047,19 +3070,26 @@ async def worker(session, state: ScanState, url: str, ssl_ctx):
     if not u or not pw:
         return None
 
+    # Opt #4: Consolidated lock - TCP precheck + pre-flight checks in single lock
+    key = (u, pw)
+    precheck_fail = False
+    wait = 0.0
+
     # TCP-Vorprüfung (asyncio.open_connection, kein loop nötig)
     # Re-Check Mode: Längerer Timeout für bereits validierte Links
     if PRECHECK_ENABLED:
         reachable = await tcp_precheck(host, recheck_mode=state.recheck_mode)
         if not reachable:
-            async with state.lock:
-                state.stats["precheck_skip"] += 1
-                state.stats["tcp_fehler"]    += 1
-            return None
+            precheck_fail = True
 
     # Pre-Flight-Checks + Jitter-Berechnung in einem Lock (keine Awaits dazwischen)
-    key = (u, pw)
     async with state.lock:
+        # Handle precheck failure
+        if precheck_fail:
+            state.stats["precheck_skip"] += 1
+            state.stats["tcp_fehler"]    += 1
+            return None
+
         # Duplikat-Check (im Recheck-Modus übersprungen)
         if not state.recheck_mode:
             if key in state.checked_keys:
@@ -4941,21 +4971,23 @@ async def _async_main():
         cookie_jar=aiohttp.CookieJar(unsafe=True),
     ) as session:
         sem = asyncio.Semaphore(cfg.workers)
+        adaptive_throttle = asyncio.Semaphore(cfg.workers)  # Opt #5: Adaptive drosseeling
 
         #
         _task_timeout = TIMEOUT * TASK_TIMEOUT_MULT
 
         async def bound(url_str):
             async with sem:
-                try:
-                    return await asyncio.wait_for(
-                        worker(session, state, url_str, ssl_ctx),
-                        timeout=_task_timeout,
-                    )
-                except asyncio.TimeoutError:
-                    async with state.lock:
-                        state.stats["timeout"] += 1
-                    return None
+                async with adaptive_throttle:  # Opt #5: Inner throttle for adaptive backoff
+                    try:
+                        return await asyncio.wait_for(
+                            worker(session, state, url_str, ssl_ctx),
+                            timeout=_task_timeout,
+                        )
+                    except asyncio.TimeoutError:
+                        async with state.lock:
+                            state.stats["timeout"] += 1
+                        return None
 
         tasks   = [bound(u) for u in cfg.input_urls]
 
@@ -4982,41 +5014,63 @@ async def _async_main():
             **tqdm_kwargs
         )
         processed = 0
+        _scan_loop_start = time.monotonic()
 
-        for coro in pbar:
-            res = await coro
-            processed += 1
+        try:
+            _last_error_check = 0
+            for coro in pbar:
+                res = await coro
+                processed += 1
 
-            #
-            s = state.stats
-            if IS_MOBILE:
-                # Nur die wichtigsten Metriken auf Mobile
-                postfix = (f"●={s['neu_de']+s['tvonly']} "
-                          f"⧗={s.get('timeout',0)+s.get('tcp_fehler',0)+s.get('dns_fehler',0)}")
-            else:
-                # Detaillierte Metriken auf größeren Displays
-                postfix = (f"DE={s['neu_de']+s['tvonly']} "
-                          f"VPN={s['vpn_de']} "
-                          f"CF={s['cf']} "
-                          f"⧗={s.get('timeout',0)+s.get('tcp_fehler',0)+s.get('dns_fehler',0)}")
+                #
+                s = state.stats
+                _scan_elapsed_loop = time.monotonic() - _scan_loop_start
+                _loop_rate = processed / _scan_elapsed_loop if _scan_elapsed_loop > 0 else 0
+                if IS_MOBILE:
+                    # Nur die wichtigsten Metriken auf Mobile
+                    postfix = (f"●={s['neu_de']+s['tvonly']} "
+                              f"⧗={s.get('timeout',0)+s.get('tcp_fehler',0)+s.get('dns_fehler',0)} "
+                              f"({_loop_rate:.1f} acc/s)")
+                else:
+                    # Detaillierte Metriken auf größeren Displays
+                    postfix = (f"DE={s['neu_de']+s['tvonly']} "
+                              f"VPN={s['vpn_de']} "
+                              f"CF={s['cf']} "
+                              f"⧗={s.get('timeout',0)+s.get('tcp_fehler',0)+s.get('dns_fehler',0)} "
+                              f"({_loop_rate:.1f} acc/s)")
 
-            pbar.set_postfix_str(postfix, refresh=False)
+                pbar.set_postfix_str(postfix, refresh=False)
 
-            if processed % CHECKPOINT_EVERY == 0:
-                save_checkpoint(state, processed, cfg.input_urls)
+                if processed % CHECKPOINT_EVERY == 0:
+                    await asyncio.to_thread(save_checkpoint, state, processed, cfg.input_urls)
 
-            if not res or not res.get("dest"):
-                continue
+                # Opt #5: Adaptive drosseeling - monitor error rate every 50 items
+                if processed % 50 == 0:
+                    total_errors = (s.get('tcp_fehler', 0) + s.get('dns_fehler', 0) +
+                                   s.get('timeout', 0))
+                    if processed > 0:
+                        error_pct = (total_errors / processed) * 100
+                        if error_pct > 30:
+                            # Reduce adaptive_throttle capacity (increase contention)
+                            # by setting a smaller semaphore count
+                            new_throttle_count = max(1, cfg.workers // 2)
+                            if adaptive_throttle._value > new_throttle_count:
+                                # Tighten throttle without creating new semaphore
+                                diff = adaptive_throttle._value - new_throttle_count
+                                for _ in range(diff):
+                                    await adaptive_throttle.acquire()
 
-            #
-            # v28.1: Zeigt jetzt Xtream-Account Verbindungen [active/max] an
-            hit_str = _format_hit_oneline(res)
-            if hit_str:
-                tqdm.write(hit_str)
+                if not res or not res.get("dest"):
+                    continue
 
-        # ── Output Buffering Flush
-        # Schreibe alle gepufferten Links bevor Session schließt
-        await _flush_all_buffers()
+                #
+                # v28.1: Zeigt jetzt Xtream-Account Verbindungen [active/max] an
+                hit_str = _format_hit_oneline(res)
+                if hit_str:
+                    tqdm.write(hit_str)
+        finally:
+            # Opt #1: Abort-safety - flush buffers on Ctrl-C
+            await _flush_all_buffers()
 
     if os.path.exists(CHECKPOINT_FILE) and not getattr(cfg, 'resume', False):
         try:
@@ -5029,9 +5083,8 @@ async def _async_main():
 
     save_links(state)
 
-    # Deduplizierung: Sicherstelle dass Links nur in EINER Datei existieren
-    # (Am Ende aufrufen, um alte + neue Duplikate zu bereinigen)
-    deduplicate_de_files()
+    # Opt #2: Non-blocking file I/O - deduplicate and mark invalid links in thread pool
+    await asyncio.to_thread(deduplicate_de_files)
 
     # Re-Check-Modus: Markiere ungültige Links als Kommentare
     if cfg.recheck_mode:
@@ -5039,7 +5092,7 @@ async def _async_main():
             state.free_links + state.tvonly_links + state.vpn_links +
             state.cf_links + state.expiring_links
         )
-        mark_invalid_links(cfg.input_urls, valid_urls, recheck_mode=True)
+        await asyncio.to_thread(mark_invalid_links, cfg.input_urls, valid_urls, True)
 
     # ──
     _scan_elapsed = time.monotonic() - _scan_start
