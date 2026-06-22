@@ -118,6 +118,7 @@ import os
 import time
 import warnings
 import shutil
+import unicodedata
 from urllib.parse import urlparse, parse_qs
 from datetime import datetime
 from typing import Dict, List
@@ -1483,13 +1484,17 @@ def score_adult_content(text: str) -> tuple:
     if not text:
         return False, 0, 0
 
+    # v36: Schrift-/Stil-Normalisierung additiv mitprüfen (Fancy Fonts).
+    font_text = _defont(text)
+    scan_text = (text + " " + font_text) if font_text != text else text
+
     t1_matches = set(m.upper().strip()
-                     for m in _ADULT_TIER1.findall(text))
+                     for m in _ADULT_TIER1.findall(scan_text))
     if t1_matches:
         return True, len(t1_matches) * 3, 1
 
     t2_matches = set(m.upper().strip()
-                     for m in _ADULT_TIER2.findall(text))
+                     for m in _ADULT_TIER2.findall(scan_text))
     if len(t2_matches) >= 2:
         return True, len(t2_matches), 2
 
@@ -1526,6 +1531,84 @@ def _normalize(text: str) -> str:
     v28: str.translate() statt 6× .replace() → ein Durchlauf (Hot-Path).
     """
     return text.translate(_UMLAUT_TABLE)
+
+
+def _build_smallcaps_table() -> dict:
+    """
+    Erzeugt eine Übersetzungstabelle für 'Small-Capital'-Buchstaben
+    (Phonetic/IPA-Extensions), die NFKD NICHT auf ASCII abbildet.
+    Beispiel: ᴅ(U+1D05) → 'd', ʙ(U+0299) → 'b', ᴎ(reversed N) → 'n'.
+    Wird einmalig beim Import gebaut → keine Laufzeitkosten im Hot-Path.
+    """
+    mapping: dict = {}
+    pat = re.compile(
+        r'LATIN LETTER SMALL CAPITAL '
+        r'(?:REVERSED |TURNED |SIDEWAYS |CLOSED )?([A-Z])\b'
+    )
+    for lo, hi in ((0x0250, 0x02AF), (0x1D00, 0x1DBF), (0xA720, 0xA7FF)):
+        for cp in range(lo, hi + 1):
+            ch = chr(cp)
+            # Überspringen, wenn NFKD bereits einen ASCII-Buchstaben liefert.
+            dec = ''.join(c for c in unicodedata.normalize('NFKD', ch)
+                          if not unicodedata.combining(c))
+            if dec.isascii() and dec.isalpha():
+                continue
+            try:
+                name = unicodedata.name(ch)
+            except ValueError:
+                continue
+            mm = pat.search(name)
+            if mm:
+                mapping[cp] = ord(mm.group(1).lower())
+    return mapping
+
+
+# Homoglyphen (Cyrillic/Greek), die in "Fancy-Font"-Senderlisten als
+# lateinische Buchstaben missbraucht werden – z.B. ZDF als "ᴢᴅғ" mit
+# ғ = U+0493 (kyrillisches GHE). Nur eindeutige Verwechslungszeichen.
+_CONFUSABLES_TABLE = str.maketrans({
+    # Kyrillisch → Latein
+    "А": "A", "В": "B", "Е": "E", "К": "K", "М": "M", "Н": "H", "О": "O",
+    "Р": "P", "С": "C", "Т": "T", "Х": "X", "У": "Y", "Ѕ": "S", "І": "I",
+    "Ј": "J", "а": "a", "е": "e", "о": "o", "р": "p", "с": "c", "х": "x",
+    "у": "y", "і": "i", "ј": "j", "ѕ": "s", "ғ": "f", "ԁ": "d", "һ": "h",
+    # Griechisch → Latein (nur eindeutige Glyphen-Doubletten)
+    "Α": "A", "Β": "B", "Ε": "E", "Ζ": "Z", "Η": "H", "Ι": "I", "Κ": "K",
+    "Μ": "M", "Ν": "N", "Ο": "O", "Ρ": "P", "Τ": "T", "Υ": "Y", "Χ": "X",
+    "ο": "o", "ρ": "p", "ν": "v",
+})
+
+_SMALLCAPS_TABLE = _build_smallcaps_table()
+
+
+def _defont(text: str) -> str:
+    """
+    Schrift-/Stil-Normalisierung für robustes DE-Matching.
+
+    Wandelt typografisch verfremdete Sendernamen zurück nach ASCII, damit
+    die DE-Erkennung auch bei "Fancy Fonts" greift, z.B.:
+      "ᴅᴇ ⁘ ᴀʀᴅ ʜᴅ"     → "de ⁘ ard hd"   (Small-Caps)
+      "SWEDEN ᵁᴴᴰ/ᴴᴰ"   → "SWEDEN UHD/HD" (Hochstellungen via NFKD)
+      "ᴢᴅғ" (mit kyr. ғ) → "zdf"           (Homoglyphen)
+
+    Schritte:
+      1. NFKD-Kompatibilitätszerlegung (Hochstellungen, Fullwidth, Math).
+      2. Kombinierende Akzente entfernen (rein fürs Matching).
+      3. Small-Capital-Buchstaben → ASCII (Tabelle).
+      4. Verwechslungszeichen (Kyrillisch/Griechisch) → ASCII.
+
+    Das Ergebnis wird ZUSÄTZLICH zum Originaltext geprüft (additiv) –
+    es kann also nur Treffer hinzufügen, nie bestehende entfernen.
+    """
+    # Fast-Path: reiner ASCII-Text braucht keine Entschriftlichung (Hot-Path).
+    if text.isascii():
+        return text
+    t = unicodedata.normalize('NFKD', text)
+    if any(unicodedata.combining(c) for c in t):
+        t = ''.join(c for c in t if not unicodedata.combining(c))
+    t = t.translate(_SMALLCAPS_TABLE)
+    t = t.translate(_CONFUSABLES_TABLE)
+    return t
 
 
 def _get_de_confidence(is_de: bool, tier: int, score: int) -> int:
@@ -1587,9 +1670,22 @@ def score_de_content(text: str, vod_mode: bool = False,
     v28: CamelCase-Splitting + verbesserte Separator-Erkennung.
     """
     # v28: Normalisierung + CamelCase-Splitting für bessere Erkennung
-    norm_text = _normalize(text)
+    # v36: + Schrift-/Stil-Normalisierung (_defont) gegen "Fancy Fonts"
+    #      (Small-Caps, Hochstellungen, Homoglyphen) – additiv geprüft.
+    norm_text  = _normalize(text)
     camel_text = _split_camelcase(text)
-    combined_text = " ".join([text, norm_text, camel_text]) if (norm_text != text or camel_text != text) else text
+    font_text  = _defont(text)
+    parts = [text]
+    if norm_text  != text: parts.append(norm_text)
+    if camel_text != text: parts.append(camel_text)
+    if font_text  != text:
+        parts.append(font_text)
+        # CamelCase-Split auch auf den entschriftlichten Text anwenden,
+        # damit "ARDde"-artige Zusammenschreibungen ebenfalls greifen.
+        fc = _split_camelcase(font_text)
+        if fc != font_text:
+            parts.append(fc)
+    combined_text = " ".join(parts) if len(parts) > 1 else text
 
     excl_count = len(_DE_EXCLUDE.findall(combined_text))
 
