@@ -112,6 +112,7 @@ import sys
 import random
 import json
 import hashlib
+import socket
 import asyncio
 import threading
 import os
@@ -287,6 +288,17 @@ PRECHECK_TIMEOUT    = 3.5
 PRECHECK_ENABLED    = True
 PRECHECK_FALLBACK_PORTS = [2095, 8080, 80, 443]  # Fallback-Port-Reihenfolge bei primär offline
 PRECHECK_ENABLE_FALLBACK = True  # Host-Failover aktivieren
+
+# MIRROR-DISCOVERY: Subdomain-Enumeration bei Host-Ausfall
+MIRROR_DISCOVERY_ENABLED = True  # Subdomain-Failover aktivieren
+MIRROR_CACHE_FILE = "mirror_cache.json"  # Cache für gelernte Mirrors
+MIRROR_DNS_WORDLIST = [
+    "mirror", "backup", "alt", "side", "cdn", "api", "panel",
+    "play", "tv", "live", "streaming", "host", "server", "geo",
+    "geo-backup", "proxy", "edge", "node", "relay",
+]
+MIRROR_DNS_TIMEOUT = 2.0  # Timeout pro DNS-Lookup
+MIRROR_DNS_MAX_CONCURRENT = 20  # Parallele DNS-Lookups
 
 # RE-CHECK MODE: Optimierte Einstellungen für bereits validierte Links
 # (sollten nicht zu streng sein - False-Positives vermeiden)
@@ -3097,6 +3109,153 @@ async def tcp_precheck_with_fallback(host: str, recheck_mode: bool = False) -> t
 
 
 # ==============================================================
+# MIRROR DISCOVERY: Subdomain-Enumeration für Xtream-Failover
+# ==============================================================
+class MirrorDiscovery:
+    """
+    Entdeckt alternative Subdomains (Mirrors) für Xtream-Panels.
+
+    Strategie:
+    1. Gelernte Mirrors aus Cache versuchen (schnell)
+    2. DNS-Brute-Force durchführen (nur bei Bedarf)
+    3. Ergebnisse speichern für zukünftige Sessions
+    """
+
+    def __init__(self, cache_file: str = MIRROR_CACHE_FILE):
+        self.cache_file = cache_file
+        self.cache: Dict = self._load_cache()
+        self.wordlist = MIRROR_DNS_WORDLIST
+        self.dns_attempts = {}  # domain → (timestamp, count) für Ratelimit
+
+    def _load_cache(self) -> Dict:
+        """Lädt Mirror-Cache aus Datei"""
+        if not os.path.exists(self.cache_file):
+            return {}
+        try:
+            with open(self.cache_file, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+
+    def _save_cache(self):
+        """Speichert Mirror-Cache in Datei"""
+        try:
+            with open(self.cache_file, "w", encoding="utf-8") as f:
+                json.dump(self.cache, f, indent=2, ensure_ascii=False)
+        except Exception:
+            pass
+
+    def _extract_domain(self, host: str) -> str:
+        """Extrahiert Basis-Domain aus Host (z.B. pepbox.xyz aus klas.pepbox.xyz:2095)"""
+        parsed = urlparse(host if host.startswith("http") else f"http://{host}")
+        hostname = parsed.hostname or host
+        parts = hostname.split('.')
+
+        # Einfache Heuristik: letzten 2 Teile (domain.xyz)
+        if len(parts) >= 2:
+            return '.'.join(parts[-2:])
+        return hostname
+
+    async def find_working_mirror(self, failed_host: str) -> str | None:
+        """
+        Findet einen funktionierenden Mirror für einen fehlgeschlagenen Host.
+
+        Returns: Erreichbarer Mirror-Host oder None
+        """
+        if not MIRROR_DISCOVERY_ENABLED:
+            return None
+
+        domain = self._extract_domain(failed_host)
+        parsed = urlparse(failed_host if failed_host.startswith("http") else f"http://{failed_host}")
+        scheme = parsed.scheme or "http"
+        port = parsed.port or 2095
+        primary_subdomain = (parsed.hostname or "").split('.')[0]
+
+        # 1. Gelernte Mirrors aus Cache versuchen
+        if domain in self.cache:
+            for mirror_subdomain in self.cache[domain].get("mirrors", []):
+                if mirror_subdomain == primary_subdomain:
+                    continue
+                alt_host = f"{scheme}://{mirror_subdomain}.{domain}:{port}"
+                if await tcp_precheck(alt_host, recheck_mode=False):
+                    return alt_host
+
+        # 2. Ratelimit-Check: Nur 1x pro Domain pro Session DNS-Brute-Force durchführen
+        now = time.monotonic()
+        if domain in self.dns_attempts:
+            last_time, count = self.dns_attempts[domain]
+            if count >= 1 or (now - last_time) < 300:  # Max 1x pro 5 Minuten
+                return None
+
+        # 3. DNS-Brute-Force durchführen
+        new_mirrors = await self._dns_bruteforce(domain)
+
+        if new_mirrors:
+            # Cache aktualisieren
+            if domain not in self.cache:
+                self.cache[domain] = {"mirrors": [], "last_updated": None}
+            self.cache[domain]["mirrors"] = list(set(
+                self.cache[domain].get("mirrors", []) + new_mirrors
+            ))
+            self.cache[domain]["last_updated"] = datetime.now().isoformat()
+            self._save_cache()
+
+            # Ersten funktionierenden Mirror zurückgeben
+            for mirror_subdomain in new_mirrors:
+                if mirror_subdomain == primary_subdomain:
+                    continue
+                alt_host = f"{scheme}://{mirror_subdomain}.{domain}:{port}"
+                if await tcp_precheck(alt_host, recheck_mode=False):
+                    self.dns_attempts[domain] = (now, 1)
+                    return alt_host
+
+        self.dns_attempts[domain] = (now, 1)
+        return None
+
+    async def _dns_bruteforce(self, domain: str) -> List[str]:
+        """
+        Asynchrone DNS-Brute-Force zur Subdomain-Enumeration.
+
+        Versucht alle Patterns aus MIRROR_DNS_WORDLIST + generische Variationen.
+        """
+        working_subdomains = []
+
+        async def check_subdomain(subdomain: str) -> str | None:
+            """Prüft ob Subdomain existiert (DNS-Lookup)"""
+            full_domain = f"{subdomain}.{domain}"
+            try:
+                ip = await asyncio.to_thread(
+                    socket.gethostbyname, full_domain,
+                    timeout=MIRROR_DNS_TIMEOUT
+                )
+                return subdomain
+            except (socket.gaierror, OSError, TypeError):
+                return None
+
+        # Parallel DNS-Lookups mit Semaphore
+        sem = asyncio.Semaphore(MIRROR_DNS_MAX_CONCURRENT)
+
+        async def bounded_check(subdomain: str) -> str | None:
+            async with sem:
+                try:
+                    return await asyncio.wait_for(
+                        check_subdomain(subdomain),
+                        timeout=MIRROR_DNS_TIMEOUT + 1.0
+                    )
+                except asyncio.TimeoutError:
+                    return None
+
+        tasks = [bounded_check(sub) for sub in self.wordlist]
+        results = await asyncio.gather(*tasks, return_exceptions=False)
+
+        return [r for r in results if r is not None and isinstance(r, str)]
+
+
+# Globale MirrorDiscovery Instanz (wird in _async_main initialisiert)
+_mirror_discovery: MirrorDiscovery | None = None
+
+
+# ==============================================================
 # WORKER
 # ==============================================================
 async def worker(session, state: ScanState, url: str, ssl_ctx):
@@ -3126,7 +3285,16 @@ async def worker(session, state: ScanState, url: str, ssl_ctx):
                 # Fallback-Port genutzt → optional loggen für Debugging
                 pass
         else:
-            precheck_fail = True
+            # Primär + Port-Fallback fehlgeschlagen → Subdomain-Mirrors versuchen (Mirror-Discovery)
+            if _mirror_discovery is not None:
+                mirror_host = await _mirror_discovery.find_working_mirror(host)
+                if mirror_host:
+                    host = mirror_host
+                    # Mirror gefunden und funktionierend → weitermachen
+                else:
+                    precheck_fail = True
+            else:
+                precheck_fail = True
 
     # Pre-Flight-Checks + Jitter-Berechnung in einem Lock (keine Awaits dazwischen)
     async with state.lock:
@@ -4909,7 +5077,7 @@ async def _async_main():
 
     # ── Laufzeit-Konfiguration anwenden ───────────────────────
     global VPN_CHECK, SAMPLE_CHECK, PRECHECK_ENABLED, FILTER_TRIAL
-    global EXP_MIN_DAYS, CF_MAX_RETRIES
+    global EXP_MIN_DAYS, CF_MAX_RETRIES, _mirror_discovery
     VPN_CHECK        = cfg.vpn_check
     SAMPLE_CHECK     = cfg.sample_check
     PRECHECK_ENABLED = cfg.precheck
@@ -4919,6 +5087,9 @@ async def _async_main():
 
     # ──
     _init_file_locks()
+
+    # ── Mirror-Discovery initialisieren (für Subdomain-Failover)
+    _mirror_discovery = MirrorDiscovery(MIRROR_CACHE_FILE)
 
     # ── State ─────────────────────────────────────────────────
     state        = ScanState(recheck_mode=cfg.recheck_mode)
