@@ -299,6 +299,7 @@ MIRROR_DNS_WORDLIST = [
 ]
 MIRROR_DNS_TIMEOUT = 2.0  # Timeout pro DNS-Lookup
 MIRROR_DNS_MAX_CONCURRENT = 20  # Parallele DNS-Lookups
+MIRROR_RDNS_ENABLED = True  # Reverse-DNS-Lookup aktivieren (Shared Hosting Detection)
 
 # RE-CHECK MODE: Optimierte Einstellungen für bereits validierte Links
 # (sollten nicht zu streng sein - False-Positives vermeiden)
@@ -3160,6 +3161,12 @@ class MirrorDiscovery:
         """
         Findet einen funktionierenden Mirror für einen fehlgeschlagenen Host.
 
+        4-stufige Fallback-Strategie:
+        1. Gelernte Mirrors aus Cache
+        2. DNS-Brute-Force (Subdomain-Enumeration)
+        3. Reverse-DNS-Lookup (alle Domains auf der IP)
+        4. (Optional) Wildcard-Detection
+
         Returns: Erreichbarer Mirror-Host oder None
         """
         if not MIRROR_DISCOVERY_ENABLED:
@@ -3170,6 +3177,7 @@ class MirrorDiscovery:
         scheme = parsed.scheme or "http"
         port = parsed.port or 2095
         primary_subdomain = (parsed.hostname or "").split('.')[0]
+        primary_hostname = parsed.hostname or ""
 
         # 1. Gelernte Mirrors aus Cache versuchen
         if domain in self.cache:
@@ -3180,14 +3188,14 @@ class MirrorDiscovery:
                 if await tcp_precheck(alt_host, recheck_mode=False):
                     return alt_host
 
-        # 2. Ratelimit-Check: Nur 1x pro Domain pro Session DNS-Brute-Force durchführen
+        # Ratelimit-Check: Nur 1x pro Domain pro Session intensive Scans durchführen
         now = time.monotonic()
         if domain in self.dns_attempts:
             last_time, count = self.dns_attempts[domain]
             if count >= 1 or (now - last_time) < 300:  # Max 1x pro 5 Minuten
                 return None
 
-        # 3. DNS-Brute-Force durchführen
+        # 2. DNS-Brute-Force durchführen
         new_mirrors = await self._dns_bruteforce(domain)
 
         if new_mirrors:
@@ -3202,6 +3210,28 @@ class MirrorDiscovery:
 
             # Ersten funktionierenden Mirror zurückgeben
             for mirror_subdomain in new_mirrors:
+                if mirror_subdomain == primary_subdomain:
+                    continue
+                alt_host = f"{scheme}://{mirror_subdomain}.{domain}:{port}"
+                if await tcp_precheck(alt_host, recheck_mode=False):
+                    self.dns_attempts[domain] = (now, 1)
+                    return alt_host
+
+        # 3. Reverse-DNS-Lookup: Finde alle Domains auf dieser IP (Shared Hosting)
+        reverse_domains = await self._reverse_dns_lookup(primary_hostname, domain)
+
+        if reverse_domains:
+            # Cache aktualisieren mit rDNS-Ergebnissen
+            if domain not in self.cache:
+                self.cache[domain] = {"mirrors": [], "last_updated": None}
+            self.cache[domain]["mirrors"] = list(set(
+                self.cache[domain].get("mirrors", []) + reverse_domains
+            ))
+            self.cache[domain]["last_updated"] = datetime.now().isoformat()
+            self._save_cache()
+
+            # Ersten funktionierenden Mirror zurückgeben
+            for mirror_subdomain in reverse_domains:
                 if mirror_subdomain == primary_subdomain:
                     continue
                 alt_host = f"{scheme}://{mirror_subdomain}.{domain}:{port}"
@@ -3249,6 +3279,58 @@ class MirrorDiscovery:
         results = await asyncio.gather(*tasks, return_exceptions=False)
 
         return [r for r in results if r is not None and isinstance(r, str)]
+
+    async def _reverse_dns_lookup(self, primary_hostname: str, base_domain: str) -> List[str]:
+        """
+        Reverse-DNS-Lookup: Findet alle Domains auf der gleichen IP.
+
+        Strategie:
+        1. IP der primären Domain auflösen
+        2. Reverse-DNS (PTR-Record) durchführen
+        3. Alle gefundenen Domains mit gleicher IP extrahieren
+        4. Subdomains des Base-Domains filtern
+
+        Returns: Liste von Subdomains (z.B. ["mirror", "backup", "cdn"])
+        """
+        try:
+            # 1. IP der primären Domain auflösen
+            primary_ip = await asyncio.to_thread(
+                socket.gethostbyname, primary_hostname,
+                timeout=MIRROR_DNS_TIMEOUT
+            )
+
+            # 2. Reverse-DNS-Lookup auf dieser IP
+            try:
+                ptr_result = await asyncio.to_thread(
+                    socket.gethostbyaddr, primary_ip,
+                    timeout=MIRROR_DNS_TIMEOUT
+                )
+                # ptr_result = (hostname, aliaslist, ipaddrlist)
+                hostname = ptr_result[0] if ptr_result else ""
+                aliases = ptr_result[1] if ptr_result and len(ptr_result) > 1 else []
+
+                # 3. Alle gefundenen Domains sammeln
+                all_hostnames = [hostname] + aliases
+
+                # 4. Subdomains des Base-Domains extrahieren
+                found_mirrors = []
+                for hostname_entry in all_hostnames:
+                    # Prüfe ob Hostname zu base_domain gehört (z.B. klas.pepbox.xyz)
+                    if hostname_entry.endswith(base_domain):
+                        # Extrahiere Subdomain (klas aus klas.pepbox.xyz)
+                        subdomain = hostname_entry.replace(f".{base_domain}", "").split(".")[-1]
+                        if subdomain and subdomain != "www":
+                            found_mirrors.append(subdomain)
+
+                return list(set(found_mirrors))  # Duplikate entfernen
+
+            except (socket.herror, OSError):
+                # Reverse-DNS nicht verfügbar (viele ISPs blockieren PTR)
+                return []
+
+        except (socket.gaierror, OSError, TypeError) as e:
+            # IP-Auflösung fehlgeschlagen
+            return []
 
 
 # Globale MirrorDiscovery Instanz (wird in _async_main initialisiert)
