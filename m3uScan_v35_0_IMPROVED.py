@@ -285,6 +285,8 @@ W                   = 64       # Terminal-Breite Portrait (Pydroid3)
 
 PRECHECK_TIMEOUT    = 3.5
 PRECHECK_ENABLED    = True
+PRECHECK_FALLBACK_PORTS = [2095, 8080, 80, 443]  # Fallback-Port-Reihenfolge bei primär offline
+PRECHECK_ENABLE_FALLBACK = True  # Host-Failover aktivieren
 
 # RE-CHECK MODE: Optimierte Einstellungen für bereits validierte Links
 # (sollten nicht zu streng sein - False-Positives vermeiden)
@@ -3058,6 +3060,42 @@ async def tcp_precheck(host: str, recheck_mode: bool = False) -> bool:
     return result
 
 
+async def tcp_precheck_with_fallback(host: str, recheck_mode: bool = False) -> tuple:
+    """
+    TCP-Precheck mit Fallback-Port-Strategie.
+
+    Versucht: Primär-Host → Alternative Ports (2095, 8080, 80, 443)
+
+    Returns: (host_to_use: str|None, found_fallback: bool)
+      host_to_use: Erreichbarer Host oder None
+      found_fallback: True wenn Fallback-Port genutzt, False wenn Primär OK
+    """
+    if not PRECHECK_ENABLE_FALLBACK:
+        # Fallback deaktiviert → normale Precheck-Logik
+        reachable = await tcp_precheck(host, recheck_mode=recheck_mode)
+        return (host if reachable else None, False)
+
+    # Primär-Host prüfen
+    if await tcp_precheck(host, recheck_mode=recheck_mode):
+        return (host, False)
+
+    # Primär-Host offline → Fallback-Ports versuchen
+    parsed = urlparse(host)
+    hostname = parsed.hostname
+    primary_port = parsed.port or (443 if parsed.scheme == "https" else 2095)
+
+    for fallback_port in PRECHECK_FALLBACK_PORTS:
+        if fallback_port == primary_port:
+            continue
+
+        fallback_host = f"{parsed.scheme}://{hostname}:{fallback_port}"
+        if await tcp_precheck(fallback_host, recheck_mode=recheck_mode):
+            return (fallback_host, True)
+
+    # Kein erreichbarer Host gefunden
+    return (None, False)
+
+
 # ==============================================================
 # WORKER
 # ==============================================================
@@ -3075,11 +3113,19 @@ async def worker(session, state: ScanState, url: str, ssl_ctx):
     precheck_fail = False
     wait = 0.0
 
-    # TCP-Vorprüfung (asyncio.open_connection, kein loop nötig)
+    # TCP-Vorprüfung mit optionalem Fallback (asyncio.open_connection, kein loop nötig)
     # Re-Check Mode: Längerer Timeout für bereits validierte Links
     if PRECHECK_ENABLED:
-        reachable = await tcp_precheck(host, recheck_mode=state.recheck_mode)
-        if not reachable:
+        working_host, found_fallback = await tcp_precheck_with_fallback(
+            host, recheck_mode=state.recheck_mode
+        )
+        if working_host:
+            # Host erreichbar (primär oder fallback)
+            host = working_host
+            if found_fallback:
+                # Fallback-Port genutzt → optional loggen für Debugging
+                pass
+        else:
             precheck_fail = True
 
     # Pre-Flight-Checks + Jitter-Berechnung in einem Lock (keine Awaits dazwischen)
