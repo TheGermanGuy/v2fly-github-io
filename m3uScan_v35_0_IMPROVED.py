@@ -1101,6 +1101,11 @@ _TIER1_WEIGHTS = {
     "MYSPORTS": 2, "MY SPORTS": 2,
 
     # ════════════════════════════════════════════════════════════════
+    # LÄNDER-/SPRACHNAMEN als Kategorie (eindeutig deutsch)
+    # ════════════════════════════════════════════════════════════════
+    "GERMANY": 5, "DEUTSCHLAND": 5,
+
+    # ════════════════════════════════════════════════════════════════
     # DEFAULT FALLBACK (bei unbekanntem deutschen Sender)
     # ════════════════════════════════════════════════════════════════
     "_default": 3,
@@ -1357,6 +1362,10 @@ _DE_TIER1 = re.compile(
     r'group-title\s*=\s*"[^"]*(?:\bDE\b|GERMANY|DEUTSCHLAND|DEUTSCH)[^"]*"|'
     # Kategorie oder Name beginnt mit GERMANY (z.B. category="Germany", name="Germany")
     r'(?:category|name)\s*=\s*"(?:GERMANY|DEUTSCHLAND|DEUTSCH)[^"]*"|'
+    # Eigenständiger Länder-/Sprachname als Kategorie/Gruppe (z.B. Xtream-API
+    # liefert reine Kategorienamen "GERMANY", "DEUTSCHLAND" ohne M3U-Attribute).
+    # Unzweideutig deutsch → sicherer Tier1-Treffer.
+    r'\bGERMANY\b|\bDEUTSCHLAND\b|'
     # Literal Unicode: ◆•●►▶★» – Zeichenbereich À-ɏ (U+00C0–U+024F)
     r'DE\s*[◆•●►▶★»]\s*[A-Z0-9À-ɏ]|'
     r'\b(?:ARD|ZDF|WDR|NDR|SWR|MDR|RBB|HR|BR|SR|3SAT|PHOENIX|'
