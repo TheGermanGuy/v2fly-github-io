@@ -1172,6 +1172,8 @@ async def generate_m3u_plus_for_account(
     # Bekannte DE-Sendergruppen als alleinstehende group-title
     _DE_GRP = re.compile(
         r'(?:'
+        # Explizite Länder/Regions-Namen als Gruppennamen (z.B. "GERMANY", "DEUTSCHLAND")
+        r'\b(?:GERMANY|DEUTSCHLAND|DEUTSCH|GERMAN)\b|'
         r'\b(?:ARD|ZDF|WDR|NDR|SWR|MDR|RBB|BR|HR|SR|3SAT|PHOENIX|'
         # Bare "ONE" entfernt (siehe _DE_TIER1): zu generisch → False-Positives.
         r'ARTE\s*DE|TAGESSCHAU24|FUNK|KiKA|KIKA)\b|'
@@ -1353,6 +1355,8 @@ _DE_TIER1 = re.compile(
     r'(?:'
     r'🇩🇪|'
     r'group-title\s*=\s*"[^"]*(?:\bDE\b|GERMANY|DEUTSCHLAND|DEUTSCH)[^"]*"|'
+    # Kategorie oder Name beginnt mit GERMANY (z.B. category="Germany", name="Germany")
+    r'(?:category|name)\s*=\s*"(?:GERMANY|DEUTSCHLAND|DEUTSCH)[^"]*"|'
     # Literal Unicode: ◆•●►▶★» – Zeichenbereich À-ɏ (U+00C0–U+024F)
     r'DE\s*[◆•●►▶★»]\s*[A-Z0-9À-ɏ]|'
     r'\b(?:ARD|ZDF|WDR|NDR|SWR|MDR|RBB|HR|BR|SR|3SAT|PHOENIX|'
