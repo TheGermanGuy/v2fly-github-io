@@ -19,6 +19,7 @@ class ProfileBundle:
     menu_paths: Dict[str, List[Tuple[int, int]]]
     troop_types: List[str]
     ocr_labels: Dict[str, List[str]] = field(default_factory=dict)
+    capture_screens: List[str] = field(default_factory=list)
     game: str = ""
 
 
@@ -46,11 +47,13 @@ def load_profile(path: str) -> ProfileBundle:
     }
     troop_types = data.get("troop_types") or list(troops.keys())
     ocr_labels = data.get("ocr_labels", {})
+    capture_screens = data.get("capture_screens") or []
     return ProfileBundle(
         profile=GameProfile(troops=troops, counter=counter),
         menu_paths=menu_paths,
         troop_types=troop_types,
         ocr_labels=ocr_labels,
+        capture_screens=capture_screens,
         game=data.get("game", ""),
     )
 

@@ -19,11 +19,15 @@ ranged, siege). Generisches Profil: `config/game_profile.example.json`.
 
 ```
 Android-Emulator (Windows-VM)
-   │  ADB: exec-out screencap -p / input tap|swipe   (adb_controller.py)
+   │  ADB MEHRSCHIRM-ERFASSUNG je relevantem Screen   (adb_controller.py)
+   │  (monarch_profile, troops, buffs): navigate -> screencap
    ▼
-Bildanalyse  ──┬─ Gemini (REST, stdlib – Default)     (gemini_analyzer.py: GeminiRestAnalyzer)
-               ├─ Gemini (SDK)                        (gemini_analyzer.py: GeminiAnalyzer)
-               └─ Composio → Google Cloud Vision      (vision_cloud.py + composio_tool.py)
+Bildanalyse je Screen ─┬─ Gemini (REST, stdlib – Default)  (gemini_analyzer.py: GeminiRestAnalyzer)
+                       ├─ Gemini (SDK)                     (gemini_analyzer.py: GeminiAnalyzer)
+                       └─ Composio → Google Cloud Vision   (vision_cloud.py + composio_tool.py)
+   ▼
+Merge + Vollständigkeitsprüfung ALLER Stats            (aggregate.py)
+   │  (bricht ab, falls relevante Felder fehlen)
    ▼
 Lokale Speicherung (SQLite)                            (storage.py)
    ▼
@@ -32,8 +36,11 @@ Verteidigungsstrategie (deterministisch, exakt)       (strategy.py)
 Telegram-Ausgabe                                       (messenger.py)
 ```
 
-Orchestriert von `pipeline.py`, CLI in `main.py`. Backend wählbar per
-`--backend gemini|cloud_vision`. VM-Einrichtung: `windows-vm/SETUP.md` + `setup.ps1`.
+Orchestriert von `pipeline.py` (`Agent.capture_all_stats` erfasst zuerst alle
+relevanten Stats per ADB über mehrere Screens und prüft Vollständigkeit, bevor
+gerechnet wird), CLI in `main.py`. Backend wählbar per `--backend gemini|cloud_vision`.
+Welche Screens erfasst werden, steht im Profil unter `capture_screens`.
+VM-Einrichtung: `windows-vm/SETUP.md` + `setup.ps1`.
 
 ## Architekturkorrekturen ggü. der Ursprungsvorgabe
 

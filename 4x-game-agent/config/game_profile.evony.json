@@ -22,6 +22,7 @@
     "available_troops.ranged": ["ranged troops", "ranged", "schützen", "fernkampf"],
     "available_troops.siege": ["siege machines", "siege", "belagerung"]
   },
+  "capture_screens": ["monarch_profile", "troops", "buffs"],
   "menu_paths": {
     "_comment_paths": "(x, y)-Tap-Koordinaten sind AUFLÖSUNGSABHÄNGIG und müssen für den Emulator (z. B. 1280x720) kalibriert werden. Platzhalter unten.",
     "keep":    [[640, 700]],

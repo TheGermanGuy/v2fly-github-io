@@ -13,7 +13,14 @@ def main(argv=None) -> int:
     parser.add_argument("--profile", required=True, help="Pfad zur Spielprofil-JSON")
     parser.add_argument("--db", default="stats.db", help="Pfad zur lokalen SQLite-DB")
     parser.add_argument("--serial", default=None, help="ADB-Geräte-Serial / host:port")
-    parser.add_argument("--screen", default=None, help="Vorab-Navigation zu Menü (z. B. 'keep')")
+    parser.add_argument(
+        "--save-dir", default=None, help="Ordner zum Ablegen der erfassten Screenshots"
+    )
+    parser.add_argument(
+        "--allow-incomplete",
+        action="store_true",
+        help="Trotz fehlender Stats fortfahren (statt abzubrechen)",
+    )
     parser.add_argument(
         "--backend",
         default="gemini",
@@ -29,7 +36,18 @@ def main(argv=None) -> int:
         adb_serial=args.serial,
         backend=args.backend,
     )
-    strategy = agent.run_once(screen=args.screen, send=not args.no_send)
+    from .pipeline import IncompleteStatsError
+
+    try:
+        strategy = agent.run_once(
+            send=not args.no_send,
+            save_dir=args.save_dir,
+            require_complete=not args.allow_incomplete,
+        )
+    except IncompleteStatsError as e:
+        print(f"Abbruch: nicht alle relevanten Stats per ADB erfasst -> {', '.join(e.missing)}")
+        print("Tipp: menu_paths/capture_screens kalibrieren oder --allow-incomplete setzen.")
+        return 2
     print(format_strategy_message(strategy))
     return 0
 
