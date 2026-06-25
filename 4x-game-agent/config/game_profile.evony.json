@@ -1,0 +1,32 @@
+{
+  "_comment": "Evony: The King's Return. Vier echte Truppentypen. WICHTIG: Die Basiswerte (attack/defense/health) hängen von der Truppen-STUFE (T1..T15+) des Spielers ab und müssen aus dem Evony-Wiki/In-Game für die jeweilige Stufe eingetragen werden. Die hier gesetzten Werte sind repräsentative Relativwerte und MÜSSEN gegen die aktuellen In-Game-Zahlen verifiziert werden. Konter-Werte bilden das Evony-Konter-Dreieck ab (Ground>Mounted>Ranged>Ground; Siege weitreichend, aber im Nahkampf schwach).",
+  "game": "Evony: The King's Return",
+  "troop_types": ["ground", "mounted", "ranged", "siege"],
+  "troops": {
+    "ground":  { "attack": 100, "defense": 160, "health": 180 },
+    "mounted": { "attack": 150, "defense": 110, "health": 130 },
+    "ranged":  { "attack": 160, "defense": 90,  "health": 100 },
+    "siege":   { "attack": 200, "defense": 70,  "health": 90  }
+  },
+  "counter": {
+    "ground":  { "ground": 1.0, "mounted": 1.3, "ranged": 0.8, "siege": 1.1 },
+    "mounted": { "ground": 0.8, "mounted": 1.0, "ranged": 1.3, "siege": 1.1 },
+    "ranged":  { "ground": 1.3, "mounted": 0.8, "ranged": 1.0, "siege": 1.1 },
+    "siege":   { "ground": 0.7, "mounted": 0.7, "ranged": 0.7, "siege": 1.0 }
+  },
+  "ocr_labels": {
+    "power": ["power", "macht"],
+    "reinforcement_capacity": ["reinforcement", "verstärkung", "march", "marsch", "capacity"],
+    "available_troops.ground": ["ground troops", "ground", "infanterie", "bodentruppen"],
+    "available_troops.mounted": ["mounted troops", "mounted", "kavallerie", "berittene"],
+    "available_troops.ranged": ["ranged troops", "ranged", "schützen", "fernkampf"],
+    "available_troops.siege": ["siege machines", "siege", "belagerung"]
+  },
+  "menu_paths": {
+    "_comment_paths": "(x, y)-Tap-Koordinaten sind AUFLÖSUNGSABHÄNGIG und müssen für den Emulator (z. B. 1280x720) kalibriert werden. Platzhalter unten.",
+    "keep":    [[640, 700]],
+    "troops":  [[640, 700], [200, 360]],
+    "buffs":   [[640, 700], [420, 360]],
+    "monarch_profile": [[80, 80]]
+  }
+}
