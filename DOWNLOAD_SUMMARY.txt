@@ -1,0 +1,294 @@
+================================================================================
+m3uScan v21.5 - Final Download Package
+Complete Suite: CLI + Tkinter GUI + Kivy GUI + Pydroid 3 Optimization
+================================================================================
+
+WHAT'S INCLUDED
+===============
+
+Core Application:
+  ✓ m3uScan_v21_5.py          Main scanner engine (4800+ lines)
+  ✓ LinkLedger v2.0           JSON-based account management
+  ✓ LinkStatusChecker         Async/sync status checking
+
+GUI Interfaces:
+  ✓ Kivy GUI                  Cross-platform (Android + Desktop) ⭐ NEW
+  ✓ Tkinter GUI               Desktop-only (legacy)
+  ✓ CLI Interface             Terminal-based (original)
+
+Pydroid 3 Optimizations (Phases 1-10):
+  ✓ Phase 1-3: Foundation     Detector, Environment, Storage
+  ✓ Phase 4: Android Native   Clipboard, Notifications, Vibration
+  ✓ Phase 5: Setup Wizard     Dependency checking, Permissions
+  ✓ Phase 6: Logging          File rotation, Error reporting
+  ✓ Phase 8: Configuration    Settings, Device profiles
+  ✓ Phase 9: Error Handling   Crash recovery, Network resilience
+  ✓ Phase 10: Documentation   Installation & Optimization guides
+
+Documentation:
+  ✓ KIVY_QUICK_START.md           3-minute setup
+  ✓ KIVY_GUI_DOCUMENTATION.md     Complete reference
+  ✓ PYDROID_INSTALLATION_GUIDE.md  Pydroid setup (NEW)
+  ✓ PYDROID_OPTIMIZATION_GUIDE.md  Tuning guide (NEW)
+  ✓ START_HERE.md                 Entry point
+  ✓ INSTALLATION_GUIDE.md         All platforms
+  ✓ QUICK_REFERENCE.txt           Cheat sheet
+
+================================================================================
+
+PLATFORM SUPPORT
+================
+
+Platform       │ CLI │ Tkinter │ Kivy │ Status
+───────────────┼─────┼─────────┼──────┼────────────────
+Windows        │ ✓   │ ✓       │ ✓    │ Fully Supported
+macOS          │ ✓   │ ✓       │ ✓    │ Fully Supported
+Linux          │ ✓   │ ✓       │ ✓    │ Fully Supported
+Android        │ ✓   │ ✗       │ ✓    │ KIVY ONLY
+Pydroid 3      │ ✓   │ ✗       │ ✓    │ KIVY ONLY (Optimized)
+QPython 3      │ ✓   │ ✗       │ ✓    │ KIVY ONLY
+iOS            │ ?   │ ✗       │ ~    │ Theoretical only
+
+Recommendation:
+  → Android Users: Use Kivy GUI with Pydroid 3 Optimization ⭐
+  → Desktop Users: Use Kivy GUI or Tkinter GUI (preference)
+  → CLI Experts: Use m3uScan_v21_5.py directly
+
+================================================================================
+
+QUICK START
+===========
+
+DESKTOP:
+  1. pip install kivy aiohttp tqdm
+  2. python kivy_launcher.py
+  3. GUI opens in <10 seconds
+
+PYDROID 3:
+  1. Terminal: pip install kivy aiohttp tqdm
+  2. Terminal: python kivy_launcher.py
+  3. GUI opens in 5-10 seconds
+  4. Auto-optimized for device
+
+QPYTHON 3:
+  1. Open QPython Editor
+  2. Load kivy_launcher.py
+  3. Press Run (▶️) button
+  4. GUI opens in editor
+
+================================================================================
+
+NEW FEATURES IN v21.5
+====================
+
+Feature                     │ v20 CLI │ v21 Tkinter │ v21.5 Kivy
+────────────────────────────┼─────────┼─────────────┼───────────
+Android Support             │   ✓     │      ✗      │    ✓⭐
+Pydroid 3 Optimized        │   ⚠     │      ✗      │    ✓⭐
+Touch-Optimized UI         │   ✗     │      ✗      │    ✓
+Dark Mode                  │   ✗     │      ⚠      │    ✓⭐
+Async Status Checks        │   ✗     │      ⚠      │    ✓
+Native Android Features    │   ✗     │      ✗      │    ✓⭐
+Automatic Optimization     │   ✗     │      ✗      │    ✓⭐
+Crash Recovery             │   ✗     │      ✗      │    ✓⭐
+Device Profiles            │   ✗     │      ✗      │    ✓⭐
+File Rotation Logging      │   ✗     │      ✗      │    ✓⭐
+
+⭐ = Unique to Kivy Edition
+⚠ = Partial implementation
+
+================================================================================
+
+FILES & SIZES
+=============
+
+Core Application:
+  m3uScan_v21_5.py                 ~150 KB
+
+GUI Frameworks:
+  kivy_gui/ (all modules)          ~80 KB
+  gui_module/ (legacy)             ~45 KB
+
+Documentation:
+  8 × .md files                    ~250 KB
+
+Configuration:
+  buildozer.spec (APK)             ~2 KB
+  kivy_launcher.py                 ~3 KB
+  gui_launcher.py                  ~3 KB
+
+Total (uncompressed):              ~575 KB
+ZIP Archive (compressed):           ~150 KB
+
+================================================================================
+
+REQUIREMENTS
+============
+
+Minimum:
+  • Python 3.7+
+  • 200 MB disk space
+  • 512 MB RAM (Pydroid)
+  • Internet connection
+
+Recommended:
+  • Python 3.8+
+  • 500 MB disk space
+  • 2 GB RAM
+  • WiFi connection
+
+Dependencies (auto-install):
+  • kivy >= 2.1       (GUI framework)
+  • aiohttp >= 3.7    (async HTTP)
+  • tqdm >= 4.5       (progress bars)
+
+Optional (performance):
+  • psutil            (memory info)
+  • jnius             (native Android features)
+
+================================================================================
+
+OPTIMIZATION FOR PYDROID 3
+=========================
+
+Automatic Detection:
+  ✓ Recognizes Pydroid environment
+  ✓ Detects CPU architecture (ARM64 vs ARMv7)
+  ✓ Measures available RAM
+  ✓ Identifies device model
+
+Auto-Optimization:
+  ✓ Workers: 1-2 (ARM slower than x86)
+  ✓ Batch Size: 5-10 (memory aware)
+  ✓ Network Timeout: 15 seconds (Pydroid slower)
+  ✓ UI Refresh: 30 FPS (battery aware)
+  ✓ Animations: Disabled on low-memory
+  ✓ GC Tuning: Aggressive on <2GB RAM
+
+Native Features:
+  ✓ Clipboard operations (copy/paste)
+  ✓ Toast notifications
+  ✓ Haptic feedback (vibration)
+  ✓ Share intent
+  ✓ Status bar color
+
+Error Handling:
+  ✓ Crash recovery with state snapshots
+  ✓ Network resilience (retry + backoff)
+  ✓ Data integrity checking
+  ✓ Automatic JSON repair
+  ✓ Log file rotation
+
+================================================================================
+
+TROUBLESHOOTING
+===============
+
+Q: "ModuleNotFoundError: No module named 'kivy'"
+A: pip install kivy>=2.1
+
+Q: "ModuleNotFoundError: No module named 'm3uScan_v21_5'"
+A: Ensure m3uScan_v21_5.py is in same directory
+
+Q: GUI opens but black screen
+A: Check logs: cat ~/.m3uscan/logs/m3uscan_*.log
+
+Q: Status checks timeout
+A: Increase timeout in Settings (GUI) or NETWORK_TIMEOUT (code)
+
+Q: App freezes/crashes
+A: Enable Low-Memory Mode or reduce Batch Size
+
+Q: Can't install dependencies
+A: pip install --upgrade pip setuptools wheel
+   pip install kivy --prefer-binary
+
+================================================================================
+
+DOCUMENTATION PRIORITY
+======================
+
+First Read (5 min):
+  1. START_HERE.md               ← You are here
+  2. KIVY_QUICK_START.md         ← Quick setup
+
+Setup & Installation (10 min):
+  3. INSTALLATION_GUIDE.md       ← All platforms
+  4. PYDROID_INSTALLATION_GUIDE.md ← Pydroid specific
+
+Regular Use (as needed):
+  5. KIVY_GUI_DOCUMENTATION.md   ← Features
+  6. QUICK_REFERENCE.txt         ← Commands
+
+Optimization (optional):
+  7. PYDROID_OPTIMIZATION_GUIDE.md ← Performance tuning
+
+Troubleshooting (problems):
+  8. Individual .log files       ← In ~/.m3uscan/logs/
+
+================================================================================
+
+SUPPORT & FEEDBACK
+==================
+
+For help:
+  1. Check relevant .md file above
+  2. Read error message in ~/.m3uscan/logs/
+  3. Review QUICK_REFERENCE.txt for commands
+  4. Run dependency checker: python3 -m kivy_gui.setup.first_run
+
+For bugs:
+  1. Check if issue documented
+  2. Collect error report: ~/.m3uscan/logs/error_*.txt
+  3. Check system info: ~/.m3uscan/logs/system_info.log
+
+================================================================================
+
+VERSION INFORMATION
+===================
+
+m3uScan v21.5 - Complete Edition
+  Release Date: 2026-06-06
+  Status: ✅ Production Ready
+  Latest: Yes
+
+Components:
+  • CLI: v21.5 (optimized parameters)
+  • Tkinter GUI: v21.0 (legacy, maintained)
+  • Kivy GUI: v21.5-kivy (new, recommended)
+  • Pydroid 3: v21.5-kivy-pydroid (new, optimized)
+
+================================================================================
+
+LICENSE & CREDITS
+=================
+
+m3uScan v21.5 - Complete Edition
+  Author: TheGermanGuy™
+  License: [As specified in original]
+  Status: Production Ready ✅
+
+Based on:
+  • m3uScan v21.5 original by m3uScan team
+  • Kivy framework for cross-platform GUI
+  • Python 3.7+ async/await
+
+================================================================================
+
+NEXT STEPS
+==========
+
+1. Extract this archive
+2. Read START_HERE.md (2 min)
+3. Install dependencies (2 min)
+4. Start Kivy GUI (1 min)
+5. Add test account
+6. Run status check
+7. Explore features!
+
+Total time to first use: ~5-10 minutes ✅
+
+================================================================================
+
+For more information, see individual .md documentation files.
+Viel Erfolg! (Good luck!) 🚀

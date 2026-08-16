@@ -1,0 +1,343 @@
+================================================================================
+  m3uScan v21.5 - QUICK REFERENCE SHEET
+  CLI + GUI Edition | TheGermanGuy™
+================================================================================
+
+📥 DOWNLOAD & SETUP
+================================================================================
+1. Complete:    m3uScan_v21_5_COMPLETE.zip (all-in-one)
+2. CLI only:    m3uScan_v21_5.py (for Pydroid 3 or minimal setup)
+3. GUI only:    gui_module_only.zip (integrate with existing)
+
+Requirements:
+  pip install aiohttp tqdm          # Always
+  pip install tkinter               # For GUI (optional)
+
+================================================================================
+🚀 QUICK START
+================================================================================
+
+CLI Mode:
+  $ python3 m3uScan_v21_5.py
+  > [A] Auto       - Best settings automatically
+  > [1-5] Presets  - Manual scan modes
+  > [V] Link-Mgmt  - Account management (NEW!)
+  > [D] Dedup      - Remove duplicates
+  > [S] Sort       - Sort results
+  > [E] Export     - M3U+ export
+
+GUI Mode:
+  $ python3 gui_launcher.py
+  [Tab 1] Accounts Manager    - Add/Edit/Delete
+  [Tab 2] Status Monitor      - Live status checks
+  [Tab 3] Import/Export       - CSV, Text, Backup
+
+================================================================================
+[V] LINK-VERWALTUNG (NEW!) - CLI MENUS
+================================================================================
+
+Main Menu:
+  [1] Link-Status abfragen        Check multiple links at once
+  [2] Alle Links Status-Check     Check ALL accounts (batch)
+  [3] Link zuweisen               Assign to person + device
+  [4] Zuweisungen entfernen       Remove assignment
+  [5] Alle Zuweisungen anzeigen   List all assignments
+  [6] Kontakte verwalten          Add/Edit contacts
+  [7] Ledger Import/Export        CSV operations
+  [Z] Zurück                      Back to main menu
+
+Sub-Menu [6] Kontakte:
+  [1] Hinzufügen   - Add: name, phone, email, notes
+  [2] Anzeigen     - Show all contacts
+  [3] Bearbeiten   - Edit existing
+
+Sub-Menu [7] Ledger:
+  [1] CSV Export   - Export accounts to CSV
+  [2] CSV Import   - Import from CSV file
+
+================================================================================
+📊 GUI TABS QUICK REFERENCE
+================================================================================
+
+TAB 1: KONTEN-MANAGER (Account Manager)
+────────────────────────────────────────
+Toolbar: [➕Add] [🗑️Delete] [✏️Edit] [🔄Refresh]
+Search:  Filter by text (live)
+TreeView: List all accounts with assignments
+Click:   Select account to view details
+Double:  Quick edit
+
+Add Dialog:
+  - Xtream Link (URL)
+  - Person Name
+  - Device (TV1, Phone, etc)
+  - Notes (optional)
+
+TAB 2: STATUS-ÜBERWACHUNG (Status Monitor)
+────────────────────────────────────────────
+Toolbar: [▶️Start] [🔄Now] [📊Stats] [💾Export]
+Status: Live status with colors
+  🟢 OK (green)
+  🔴 Error (red)
+  🟡 Warning (orange) - <7 days left
+
+Details: Click account → show info
+Warnings: Bottom panel with issues
+
+Auto-Refresh: Every 60 seconds when monitoring
+
+TAB 3: IMPORT/EXPORT (CSV, Text, Backup)
+──────────────────────────────────────────
+Sub-Tab A: CSV
+  [Export All]      - All accounts to CSV
+  [Export Status]   - With details
+  [Load CSV]        - Import from file
+
+Sub-Tab B: Text Files
+  [Load File]       - Load text file
+  [Import All]      - Parse URLs from text
+  [Clear]           - Clear area
+
+Sub-Tab C: Backup
+  [Create Backup]        - Auto-timestamped
+  [Open Backup Folder]   - Show directory
+  [Restore from Backup]  - List + select
+  [Backup List]          - Dropdown
+
+================================================================================
+⚙️ CONFIGURATION (Edit m3uScan_v21_5.py lines 147-225)
+================================================================================
+
+Performance:
+  WORKERS = 8               # Parallel jobs (4 on mobile)
+  TIMEOUT = 10              # Request timeout seconds
+  TASK_TIMEOUT_MULT = 2.5   # Hard timeout multiplier (25s max)
+
+CloudFlare:
+  CF_JITTER_BASE = 3.0      # Retry backoff after 429
+  CF_MAX_RETRIES = 0        # Pydroid3: can't solve JS
+
+Quality:
+  DEAD_LINK_WARN_PCT = 60   # Warn if >60% fail
+  CAT_MIN_COUNT = 5         # Min categories
+
+Checkpoints:
+  CHECKPOINT_EVERY = 50     # Save progress every N
+
+Mobile Auto-Config:
+  IS_MOBILE = True (auto-detect)
+  → Reduces WORKERS, TIMEOUT, JITTER for stability
+
+================================================================================
+🔗 LEDGER v2.0 DATA FORMAT (link_ledger.json)
+================================================================================
+
+Structure:
+{
+  "version": "2.0",
+  "ledger": {
+    "user1:pass1": {
+      "assignments": [
+        {
+          "person": "Alice",
+          "device": "TV1",
+          "status": "active",
+          "notes": "Living room",
+          "date": "2026-06-01T10:30:00"
+        }
+      ],
+      "metadata": {
+        "quality_score": 0.95,
+        "tags": ["4K", "Sport"],
+        "last_status_check": "2026-06-06T14:22:00"
+      }
+    }
+  },
+  "contacts": {
+    "Alice": {
+      "phone": "+49123456",
+      "email": "alice@example.com",
+      "notes": "Tenant"
+    }
+  }
+}
+
+Auto-Migration: v1.0 → v2.0 (backward compatible!)
+
+================================================================================
+💻 PYTHON API (Advanced)
+================================================================================
+
+Import:
+  from m3uScan_v21_5 import LinkLedger, LinkStatusChecker
+
+Ledger:
+  ledger = LinkLedger()
+  ledger.assign(url, "Alice", device="TV1", notes="Room1")
+  ledger.unassign(url, "Alice")
+  ledger.get_assignments(url)
+  ledger.add_contact("Alice", phone="+49...", email="a@...")
+  ledger.export_to_csv()
+  ledger.import_from_csv(csv_str)
+
+Status Check:
+  checker = LinkStatusChecker()
+  result = checker.check_url_sync(url)      # Fast (urllib)
+  results = await checker.check_batch(urls)  # Async (aiohttp)
+
+  Result format:
+  {
+    "success": true,
+    "exp": "31.12.2026",
+    "days_left": 180,
+    "max_con": 5,
+    "active_con": 2,
+    "status": "active"
+  }
+
+================================================================================
+🎯 COMMON TASKS
+================================================================================
+
+Task 1: Scan for German content
+  CLI:  python3 m3uScan_v21_5.py → [A] or [2]
+  GUI:  Not needed (for management only)
+
+Task 2: Check status of all accounts
+  CLI:  [V] → [2] Alle Links Status-Check
+  GUI:  Tab 2 → [🔄 Jetzt prüfen]
+
+Task 3: Add new account and assign
+  CLI:  [V] → [3] Link zuweisen
+  GUI:  Tab 1 → [➕ Add] → Fill form → Save
+
+Task 4: Export accounts for backup
+  CLI:  [V] → [7] → [1] CSV Export
+  GUI:  Tab 3 → CSV Tab → [Alle exportieren]
+
+Task 5: Create backup
+  CLI:  Not available (JSON only)
+  GUI:  Tab 3 → Backup Tab → [💾 Backup erstellen]
+
+Task 6: Manage contacts
+  CLI:  [V] → [6] Kontakte verwalten
+  GUI:  In GUI: Link info shows contact details
+
+Task 7: Import accounts from file
+  CLI:  [V] → [7] → [2] Import
+  GUI:  Tab 3 → Text/CSV Tab → [Load/Import]
+
+================================================================================
+⏱️ TIMEOUTS & PERFORMANCE
+================================================================================
+
+Parameter          Default  Mobile   Effect
+─────────────────────────────────────────────────────────────────
+WORKERS            8        4        Parallel requests
+TIMEOUT            10s      10s      Request timeout
+PRECHECK_TIMEOUT   3.5s     3.5s     TCP test
+TASK_TIMEOUT_MULT  2.5      2.0      Hard limit (25s/20s)
+CHECKPOINT_EVERY   50       30       Save progress
+CF_JITTER_BASE     3.0      2.0      CloudFlare retry
+
+For slow connections: Increase TIMEOUT to 15-20s
+For many errors: Increase PRECHECK_TIMEOUT to 5s
+For stability: Reduce WORKERS to 4-6
+
+================================================================================
+🚨 TROUBLESHOOTING
+================================================================================
+
+Error: "No module named 'aiohttp'"
+  Fix: pip install aiohttp
+
+Error: "No module named 'tkinter'" (GUI)
+  Fix: sudo apt install python3-tk  (Ubuntu)
+       brew install python-tk       (macOS)
+
+Error: "link_ledger.json: Permission denied"
+  Fix: chmod 644 link_ledger.json
+       or run in different folder
+
+Error: GUI won't start
+  Fix: Verify tkinter: python3 -c "import tkinter; print('OK')"
+       Use CLI instead if GUI fails
+
+Error: CloudFlare blocks (too many 429s)
+  Fix: Increase CF_JITTER_BASE to 5.0
+       Set CF_MAX_RETRIES to 1-3 (if possible)
+
+================================================================================
+📚 DOCUMENTATION FILES
+================================================================================
+
+GUI_FEATURES_v21_5.md       - Complete feature list
+IMPLEMENTATION_SUMMARY.md   - Technical details
+INSTALLATION_GUIDE.md       - Setup instructions
+QUICK_REFERENCE.txt         - This file!
+
+In Code:
+  m3uScan_v21_5.py header   - Scan engine documentation
+  GUI Help Dialog           - Built-in help
+
+================================================================================
+🎨 GUI COLOR CODES
+================================================================================
+
+Status Icons:
+  🟢 OK        - Account active, valid
+  🔴 ERROR     - Account invalid/expired
+  🟡 WARNING   - Account expiring soon (3-7 days)
+  🔵 INFO      - Informational
+
+Colors:
+  Green (#2ecc71)   - Success, active
+  Red (#e74c3c)     - Error, expired
+  Orange (#f39c12)  - Warning, caution
+  Blue (#3498db)    - Primary, info
+  Gray (#95a5a6)    - Disabled, inactive
+
+================================================================================
+📱 PYDROID 3 (Android)
+================================================================================
+
+Installation:
+  1. Copy m3uScan_v21_5.py to Pydroid
+  2. Open in Pydroid Editor
+  3. Run (▶️ button)
+
+Use CLI only:
+  python3 m3uScan_v21_5.py
+  → [A] Auto Scan
+  → [V] Link Management (all features work!)
+
+Note: No GUI on Android (no Tkinter)
+      All CLI features fully functional!
+
+================================================================================
+✅ FEATURES SUMMARY
+================================================================================
+
+NEW in v21.5:
+  ✓ Parameter optimization (TASK_TIMEOUT, CF_JITTER, WARN_PCT)
+  ✓ LinkLedger v2.0 (devices, notes, contacts)
+  ✓ Async status checks + caching
+  ✓ Extended [V] CLI menu (7 options)
+  ✓ Full Tkinter GUI (3 tabs)
+  ✓ CSV import/export
+  ✓ Contact management
+  ✓ Backup/restore system
+  ✓ Color-coded status
+  ✓ Mobile adaptive config
+
+MAINTAINED:
+  ✓ Scan engine
+  ✓ All scan modes
+  ✓ Adult content detection
+  ✓ CloudFlare handling
+  ✓ M3U+ export
+  ✓ Backward compatibility
+
+================================================================================
+Version: 21.5 | Status: ✅ Production Ready | Date: 2026-06-06
+================================================================================
